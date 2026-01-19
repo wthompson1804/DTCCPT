@@ -127,7 +127,8 @@ def generate_capability_mapping(
     research_results: Dict[str, Any],
     requirements_output: Dict[str, Any],
     agent_design_output: Dict[str, Any],
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-20250514",
+    api_key: Optional[str] = None
 ) -> CapabilityMappingResult:
     """Generate capability mapping using DTC Step 3 methodology.
 
@@ -137,6 +138,7 @@ def generate_capability_mapping(
         requirements_output: Requirements from Step 1
         agent_design_output: Agent design from Step 2
         model: Claude model to use
+        api_key: Optional API key
 
     Returns:
         CapabilityMappingResult with capability mappings
@@ -161,13 +163,13 @@ def generate_capability_mapping(
         )
 
         # Get Anthropic client
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not configured")
+        key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        if not key:
+            raise ValueError("ANTHROPIC_API_KEY not provided")
 
         client = ChatAnthropic(
             model=model,
-            api_key=api_key,
+            api_key=key,
             max_tokens=8192,
         )
 

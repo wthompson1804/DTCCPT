@@ -91,7 +91,8 @@ Now, following the DTC methodology below, generate comprehensive business requir
 def generate_requirements(
     form_data: Dict[str, Any],
     research_results: Dict[str, Any],
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-20250514",
+    api_key: Optional[str] = None
 ) -> RequirementsResult:
     """Generate business requirements using DTC Step 1 methodology.
 
@@ -99,6 +100,7 @@ def generate_requirements(
         form_data: User input form data
         research_results: Research findings from Step 0
         model: Claude model to use
+        api_key: Optional API key
 
     Returns:
         RequirementsResult with generated requirements
@@ -110,13 +112,13 @@ def generate_requirements(
         prompt = build_requirements_prompt(form_data, research_results)
 
         # Get Anthropic client
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not configured")
+        key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        if not key:
+            raise ValueError("ANTHROPIC_API_KEY not provided")
 
         client = ChatAnthropic(
             model=model,
-            api_key=api_key,
+            api_key=key,
             max_tokens=8192,
         )
 

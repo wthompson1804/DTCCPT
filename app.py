@@ -99,9 +99,19 @@ def initialize_session_state():
             st.session_state[key] = default_value
 
 
+def get_api_key() -> str:
+    """Get API key from session state or environment."""
+    # Check session state first (UI input)
+    session_key = st.session_state.get('api_key', '')
+    if session_key and session_key.startswith('sk-ant-'):
+        return session_key
+    # Fall back to environment variable
+    return os.getenv('ANTHROPIC_API_KEY', '')
+
+
 def check_api_key() -> bool:
     """Check if the Anthropic API key is configured."""
-    api_key = os.getenv('ANTHROPIC_API_KEY', '')
+    api_key = get_api_key()
     return api_key.startswith('sk-ant-')
 
 
@@ -184,6 +194,7 @@ def render_step_0_research():
                                 jurisdiction=st.session_state.form_data.get('jurisdiction', ''),
                                 organization_size=st.session_state.form_data.get('organization_size', 'Enterprise'),
                                 timeline=st.session_state.form_data.get('timeline', 'Pilot Project'),
+                                api_key=get_api_key(),
                             )
                             st.session_state.research_results = format_research_for_display(result)
                         except Exception as e:
@@ -255,6 +266,7 @@ def render_step_1_requirements():
                         result = generate_requirements(
                             form_data=st.session_state.form_data,
                             research_results=st.session_state.research_results or {},
+                            api_key=get_api_key(),
                         )
                         st.session_state.requirements_output = format_requirements_for_display(result)
                     except Exception as e:
@@ -330,6 +342,7 @@ def render_step_2_agent_design():
                             form_data=st.session_state.form_data,
                             research_results=st.session_state.research_results or {},
                             requirements_output=st.session_state.requirements_output or {},
+                            api_key=get_api_key(),
                         )
                         st.session_state.agent_design_output = format_agent_design_for_display(result)
                     except Exception as e:
@@ -453,6 +466,7 @@ def render_step_3_capability_mapping():
                             research_results=st.session_state.research_results or {},
                             requirements_output=st.session_state.requirements_output or {},
                             agent_design_output=st.session_state.agent_design_output or {},
+                            api_key=get_api_key(),
                         )
                         st.session_state.capability_mapping = format_capability_mapping_for_display(result)
                     except Exception as e:

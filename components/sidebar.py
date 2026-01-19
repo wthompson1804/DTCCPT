@@ -18,6 +18,26 @@ def render_sidebar(config: Dict[str, Any]) -> None:
 
         st.divider()
 
+        # API Key input
+        st.subheader("API Configuration")
+        api_key = st.text_input(
+            "Anthropic API Key",
+            type="password",
+            placeholder="sk-ant-...",
+            value=st.session_state.get('api_key', ''),
+            help="Enter your Anthropic API key to enable AI-powered features"
+        )
+        if api_key:
+            st.session_state['api_key'] = api_key
+            if api_key.startswith('sk-ant-'):
+                st.success("API key configured", icon=":material/check_circle:")
+            else:
+                st.warning("Invalid key format", icon=":material/warning:")
+        else:
+            st.info("Demo mode active", icon=":material/info:")
+
+        st.divider()
+
         # Current step indicator
         current_step = st.session_state.get('current_step', 0)
         steps = [

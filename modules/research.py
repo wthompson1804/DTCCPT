@@ -91,23 +91,25 @@ def build_research_prompt(
     return prompt
 
 
-def get_anthropic_client(model: str = "claude-sonnet-4-20250514") -> ChatAnthropic:
+def get_anthropic_client(model: str = "claude-sonnet-4-20250514", api_key: Optional[str] = None) -> ChatAnthropic:
     """Get an Anthropic Claude client.
 
     Args:
         model: Model name to use
+        api_key: Optional API key (falls back to environment variable)
 
     Returns:
         ChatAnthropic client instance
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    # Use provided key or fall back to environment
+    key = api_key or os.getenv("ANTHROPIC_API_KEY")
 
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+    if not key:
+        raise ValueError("ANTHROPIC_API_KEY not provided")
 
     return ChatAnthropic(
         model=model,
-        api_key=api_key,
+        api_key=key,
         max_tokens=8192,
     )
 
@@ -118,7 +120,8 @@ async def conduct_research_async(
     jurisdiction: str,
     organization_size: str = "Enterprise",
     timeline: str = "Pilot Project",
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-20250514",
+    api_key: Optional[str] = None
 ) -> ResearchResult:
     """Conduct comprehensive research asynchronously.
 
@@ -132,6 +135,7 @@ async def conduct_research_async(
         organization_size: Organization size
         timeline: Implementation timeline
         model: Claude model to use
+        api_key: Optional API key
 
     Returns:
         ResearchResult with findings
@@ -144,7 +148,7 @@ async def conduct_research_async(
     )
 
     try:
-        client = get_anthropic_client(model)
+        client = get_anthropic_client(model, api_key)
 
         # Build the research prompt
         research_prompt = build_research_prompt(
@@ -216,7 +220,8 @@ def conduct_research(
     jurisdiction: str,
     organization_size: str = "Enterprise",
     timeline: str = "Pilot Project",
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-20250514",
+    api_key: Optional[str] = None
 ) -> ResearchResult:
     """Synchronous wrapper for research function.
 
@@ -227,6 +232,7 @@ def conduct_research(
         organization_size: Organization size
         timeline: Implementation timeline
         model: Claude model to use
+        api_key: Optional API key
 
     Returns:
         ResearchResult with findings
@@ -237,7 +243,8 @@ def conduct_research(
         jurisdiction=jurisdiction,
         organization_size=organization_size,
         timeline=timeline,
-        model=model
+        model=model,
+        api_key=api_key
     ))
 
 

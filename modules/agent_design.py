@@ -195,7 +195,8 @@ def generate_agent_design(
     form_data: Dict[str, Any],
     research_results: Dict[str, Any],
     requirements_output: Dict[str, Any],
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-20250514",
+    api_key: Optional[str] = None
 ) -> AgentDesignResult:
     """Generate agent design using DTC Step 2 methodology.
 
@@ -204,6 +205,7 @@ def generate_agent_design(
         research_results: Research findings from Step 0
         requirements_output: Requirements from Step 1
         model: Claude model to use
+        api_key: Optional API key
 
     Returns:
         AgentDesignResult with design recommendations
@@ -215,13 +217,13 @@ def generate_agent_design(
         prompt = build_agent_design_prompt(form_data, research_results, requirements_output)
 
         # Get Anthropic client
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not configured")
+        key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        if not key:
+            raise ValueError("ANTHROPIC_API_KEY not provided")
 
         client = ChatAnthropic(
             model=model,
-            api_key=api_key,
+            api_key=key,
             max_tokens=8192,
         )
 
