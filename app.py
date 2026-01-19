@@ -21,6 +21,12 @@ load_dotenv()
 
 # Import modules
 from modules.data_loader import load_config, load_capabilities, load_prompt
+from modules.research import conduct_research, format_research_for_display
+from modules.requirements import generate_requirements, format_requirements_for_display
+from modules.agent_design import generate_agent_design, format_agent_design_for_display, AGENT_TYPE_CRITERIA
+from modules.capability_mapping import generate_capability_mapping, format_capability_mapping_for_display
+
+# Import components
 from components.sidebar import render_sidebar
 from components.progress import (
     render_progress_indicator,
@@ -28,6 +34,7 @@ from components.progress import (
     render_step_navigation
 )
 from components.input_form import render_input_form, render_input_summary
+from components.research_display import render_research_results, render_research_error
 
 
 # Page configuration
@@ -140,35 +147,62 @@ def render_step_0_research():
                 - **Economic Viability** - ROI data, cost structures
                 """)
 
-            if st.button("Start Deep Research", type="primary", use_container_width=True):
-                with st.spinner("Conducting deep research... This may take a few minutes."):
-                    # TODO: Integrate Open Deep Research in Phase 2
-                    # For now, show placeholder
+            if not check_api_key():
+                st.warning("Anthropic API key required for research. Please configure ANTHROPIC_API_KEY.")
+                if st.button("Skip Research (Demo Mode)", use_container_width=True):
                     st.session_state.research_results = {
-                        'status': 'placeholder',
-                        'message': 'Deep research integration will be added in Phase 2',
-                        'preliminary_type': 'T2'
+                        'status': 'demo',
+                        'summary': {
+                            'industry': st.session_state.form_data.get('industry'),
+                            'use_case': st.session_state.form_data.get('use_case'),
+                            'jurisdiction': st.session_state.form_data.get('jurisdiction'),
+                        },
+                        'preliminary_assessment': {
+                            'go_no_go': 'caution',
+                            'recommended_type': 'T2',
+                            'confidence_level': 'medium',
+                            'key_risks': ['Demo mode - no actual research conducted'],
+                            'critical_success_factors': ['Configure API key for real research'],
+                        },
+                        'research_areas': {
+                            'industry_adoption': {'name': 'Industry AI Adoption', 'findings': 'Demo mode - configure API for actual research', 'confidence': 'low'},
+                            'regulatory_environment': {'name': 'Regulatory Environment', 'findings': 'Demo mode - configure API for actual research', 'confidence': 'low'},
+                            'technical_integration': {'name': 'Technical Integration', 'findings': 'Demo mode - configure API for actual research', 'confidence': 'low'},
+                            'risk_failure_modes': {'name': 'Risk & Failure Modes', 'findings': 'Demo mode - configure API for actual research', 'confidence': 'low'},
+                            'economic_viability': {'name': 'Economic Viability', 'findings': 'Demo mode - configure API for actual research', 'confidence': 'low'},
+                        },
+                        'sources': [],
                     }
                     st.rerun()
+            else:
+                if st.button("Start Deep Research", type="primary", use_container_width=True):
+                    with st.spinner("Conducting deep research... This may take 1-2 minutes."):
+                        try:
+                            result = conduct_research(
+                                industry=st.session_state.form_data.get('industry', ''),
+                                use_case=st.session_state.form_data.get('use_case', ''),
+                                jurisdiction=st.session_state.form_data.get('jurisdiction', ''),
+                                organization_size=st.session_state.form_data.get('organization_size', 'Enterprise'),
+                                timeline=st.session_state.form_data.get('timeline', 'Pilot Project'),
+                            )
+                            st.session_state.research_results = format_research_for_display(result)
+                        except Exception as e:
+                            st.session_state.research_results = {
+                                'status': 'error',
+                                'error': str(e),
+                            }
+                        st.rerun()
         else:
             # Show research results
             st.markdown("### Research Results")
 
-            if st.session_state.research_results.get('status') == 'placeholder':
-                st.info(
-                    "Research integration pending. In the full implementation, "
-                    "this will show cited research across all 5 areas with source URLs."
-                )
-
-                st.markdown(f"""
-                **Preliminary Agent Type Recommendation:** {st.session_state.research_results.get('preliminary_type', 'TBD')}
-
-                This recommendation will be refined based on deep research findings.
-                """)
+            if st.session_state.research_results.get('error'):
+                render_research_error(st.session_state.research_results['error'])
+            elif st.session_state.research_results.get('status') == 'demo':
+                st.warning("Running in demo mode. Configure ANTHROPIC_API_KEY for actual research.")
+                render_research_results(st.session_state.research_results)
             else:
-                # Display actual research results
-                # TODO: Implement in Phase 2
-                pass
+                render_research_results(st.session_state.research_results)
 
             # Navigation
             render_step_navigation(
@@ -205,27 +239,42 @@ def render_step_1_requirements():
             except FileNotFoundError:
                 st.warning("Prompt template not found")
 
-        if st.button("Generate Requirements", type="primary", use_container_width=True):
-            with st.spinner("Generating business requirements..."):
-                # TODO: Integrate Claude API in Phase 3
+        if not check_api_key():
+            st.warning("Anthropic API key required. Please configure ANTHROPIC_API_KEY.")
+            if st.button("Skip Requirements (Demo Mode)", use_container_width=True):
                 st.session_state.requirements_output = {
-                    'status': 'placeholder',
-                    'message': 'Requirements generation will be implemented in Phase 3'
+                    'status': 'demo',
+                    'full_text': '## Demo Mode\n\nConfigure ANTHROPIC_API_KEY to generate actual requirements.\n\n### Sample Requirements\n- REQ-01: System shall provide AI agent capabilities\n- REQ-02: System shall integrate with existing infrastructure',
+                    'sections': {},
                 }
                 st.rerun()
+        else:
+            if st.button("Generate Requirements", type="primary", use_container_width=True):
+                with st.spinner("Generating business requirements..."):
+                    try:
+                        result = generate_requirements(
+                            form_data=st.session_state.form_data,
+                            research_results=st.session_state.research_results or {},
+                        )
+                        st.session_state.requirements_output = format_requirements_for_display(result)
+                    except Exception as e:
+                        st.session_state.requirements_output = {
+                            'status': 'error',
+                            'error': str(e),
+                        }
+                    st.rerun()
     else:
         # Show requirements output
         st.markdown("### Generated Requirements")
 
-        if st.session_state.requirements_output.get('status') == 'placeholder':
-            st.info(
-                "Requirements generation pending. In the full implementation, "
-                "this will display structured business requirements."
-            )
+        if st.session_state.requirements_output.get('error'):
+            st.error(f"Error: {st.session_state.requirements_output['error']}")
+        elif st.session_state.requirements_output.get('status') == 'demo':
+            st.warning("Running in demo mode. Configure ANTHROPIC_API_KEY for actual requirements.")
+            st.markdown(st.session_state.requirements_output.get('full_text', ''))
         else:
-            # Display actual requirements
-            # TODO: Implement in Phase 3
-            pass
+            # Display requirements
+            st.markdown(st.session_state.requirements_output.get('full_text', ''))
 
         render_step_navigation(
             current_step=1,
@@ -242,16 +291,9 @@ def render_step_2_agent_design():
         "Assess the appropriate agent type (T0-T4) and design the agent architecture"
     )
 
-    # Load agent types from config
-    try:
-        config = load_config()
-        agent_types = config.get('agent_types', {})
-    except Exception:
-        agent_types = {}
-
     # Display agent type reference
     with st.expander("Agent Type Reference (T0-T4)", expanded=True):
-        for type_id, type_info in agent_types.items():
+        for type_id, type_info in AGENT_TYPE_CRITERIA.items():
             st.markdown(f"**{type_id}: {type_info.get('name', '')}** - {type_info.get('description', '')}")
 
     st.divider()
@@ -267,40 +309,85 @@ def render_step_2_agent_design():
             except FileNotFoundError:
                 st.warning("Prompt template not found")
 
-        if st.button("Assess Agent Type", type="primary", use_container_width=True):
-            with st.spinner("Assessing agent type and generating design..."):
-                # TODO: Integrate Claude API in Phase 3
+        if not check_api_key():
+            st.warning("Anthropic API key required. Please configure ANTHROPIC_API_KEY.")
+            if st.button("Skip Assessment (Demo Mode)", use_container_width=True):
                 st.session_state.agent_design_output = {
-                    'status': 'placeholder',
+                    'status': 'demo',
                     'recommended_type': 'T2',
-                    'message': 'Agent design will be implemented in Phase 3'
+                    'confirmed_type': None,
+                    'type_info': AGENT_TYPE_CRITERIA.get('T2', {}),
+                    'justification': 'Demo mode - configure API for actual assessment',
+                    'architecture_summary': 'Demo mode - configure API for actual architecture',
+                    'full_document': '## Demo Mode\n\nConfigure ANTHROPIC_API_KEY for actual agent design.',
                 }
                 st.rerun()
+        else:
+            if st.button("Assess Agent Type", type="primary", use_container_width=True):
+                with st.spinner("Assessing agent type and generating design..."):
+                    try:
+                        result = generate_agent_design(
+                            form_data=st.session_state.form_data,
+                            research_results=st.session_state.research_results or {},
+                            requirements_output=st.session_state.requirements_output or {},
+                        )
+                        st.session_state.agent_design_output = format_agent_design_for_display(result)
+                    except Exception as e:
+                        st.session_state.agent_design_output = {
+                            'status': 'error',
+                            'error': str(e),
+                        }
+                    st.rerun()
     else:
         # Show agent design output
         st.markdown("### Agent Type Assessment")
 
-        if st.session_state.agent_design_output.get('status') == 'placeholder':
+        if st.session_state.agent_design_output.get('error'):
+            st.error(f"Error: {st.session_state.agent_design_output['error']}")
+        else:
             recommended = st.session_state.agent_design_output.get('recommended_type', 'T2')
+            type_info = st.session_state.agent_design_output.get('type_info', {})
 
-            st.success(f"**Recommended Agent Type: {recommended}**")
-            st.info(
-                "Full agent design generation pending. In the full implementation, "
-                "this will include detailed architecture recommendations."
-            )
+            col1, col2 = st.columns([1, 2])
+
+            with col1:
+                st.markdown(f"""
+                <div style="
+                    background-color: #3B82F620;
+                    border: 3px solid #3B82F6;
+                    border-radius: 12px;
+                    padding: 24px;
+                    text-align: center;
+                ">
+                    <div style="font-size: 3rem; font-weight: bold; color: #3B82F6;">{recommended}</div>
+                    <div style="font-size: 1.1rem; font-weight: bold;">{type_info.get('name', '')}</div>
+                    <div style="font-size: 0.9rem; color: #6B7280; margin-top: 8px;">Recommended Type</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col2:
+                st.markdown(f"**Description:** {type_info.get('description', '')}")
+
+                if st.session_state.agent_design_output.get('justification'):
+                    st.markdown("**Justification:**")
+                    st.markdown(st.session_state.agent_design_output['justification'])
 
             # Human-in-the-loop confirmation
+            st.divider()
             st.markdown("### Confirm Agent Type")
+            st.markdown("Review the recommendation and confirm or adjust the agent type before proceeding.")
+
             confirmed_type = st.selectbox(
                 "Select or confirm the agent type for capability mapping:",
                 options=['T0', 'T1', 'T2', 'T3', 'T4'],
-                index=['T0', 'T1', 'T2', 'T3', 'T4'].index(recommended)
+                index=['T0', 'T1', 'T2', 'T3', 'T4'].index(recommended),
+                key="agent_type_selector"
             )
             st.session_state.agent_design_output['confirmed_type'] = confirmed_type
-        else:
-            # Display actual design
-            # TODO: Implement in Phase 3
-            pass
+
+            # Show full design document
+            with st.expander("View Full Design Document", expanded=False):
+                st.markdown(st.session_state.agent_design_output.get('full_document', ''))
 
         render_step_navigation(
             current_step=2,
@@ -342,25 +429,72 @@ def render_step_3_capability_mapping():
             except FileNotFoundError:
                 st.warning("Prompt template not found")
 
-        if st.button("Generate Capability Mapping", type="primary", use_container_width=True):
-            with st.spinner("Mapping capabilities..."):
-                # TODO: Integrate Claude API in Phase 3
+        if not check_api_key():
+            st.warning("Anthropic API key required. Please configure ANTHROPIC_API_KEY.")
+            if st.button("Skip Mapping (Demo Mode)", use_container_width=True):
                 st.session_state.capability_mapping = {
-                    'status': 'placeholder',
-                    'message': 'Capability mapping will be implemented in Phase 3'
+                    'status': 'demo',
+                    'agent_type': st.session_state.agent_design_output.get('confirmed_type', 'T2') if st.session_state.agent_design_output else 'T2',
+                    'total_mapped': 0,
+                    'essential_count': 0,
+                    'advanced_count': 0,
+                    'optional_count': 0,
+                    'mappings': [],
+                    'full_document': '## Demo Mode\n\nConfigure ANTHROPIC_API_KEY for actual capability mapping.',
+                    'html_visualization': '<html><body><h1>Demo Mode</h1><p>Configure API key for visualization.</p></body></html>',
                 }
                 st.rerun()
+        else:
+            if st.button("Generate Capability Mapping", type="primary", use_container_width=True):
+                with st.spinner("Mapping capabilities... This may take 1-2 minutes."):
+                    try:
+                        result = generate_capability_mapping(
+                            form_data=st.session_state.form_data,
+                            research_results=st.session_state.research_results or {},
+                            requirements_output=st.session_state.requirements_output or {},
+                            agent_design_output=st.session_state.agent_design_output or {},
+                        )
+                        st.session_state.capability_mapping = format_capability_mapping_for_display(result)
+                    except Exception as e:
+                        st.session_state.capability_mapping = {
+                            'status': 'error',
+                            'error': str(e),
+                        }
+                    st.rerun()
     else:
         # Show capability mapping
         st.markdown("### Capability Mapping Results")
 
-        if st.session_state.capability_mapping.get('status') == 'placeholder':
-            st.info(
-                "Capability mapping pending. In the full implementation, "
-                "this will display an interactive periodic table visualization."
-            )
+        if st.session_state.capability_mapping.get('error'):
+            st.error(f"Error: {st.session_state.capability_mapping['error']}")
+        else:
+            # Summary metrics
+            col1, col2, col3, col4 = st.columns(4)
 
-            # Placeholder for periodic table
+            with col1:
+                st.metric(
+                    "Total Mapped",
+                    st.session_state.capability_mapping.get('total_mapped', 0)
+                )
+            with col2:
+                st.metric(
+                    "Essential",
+                    st.session_state.capability_mapping.get('essential_count', 0)
+                )
+            with col3:
+                st.metric(
+                    "Advanced",
+                    st.session_state.capability_mapping.get('advanced_count', 0)
+                )
+            with col4:
+                st.metric(
+                    "Optional",
+                    st.session_state.capability_mapping.get('optional_count', 0)
+                )
+
+            st.divider()
+
+            # Capability categories visualization
             st.markdown("#### Capability Categories")
             try:
                 config = load_config()
@@ -384,10 +518,54 @@ def render_step_3_capability_mapping():
                         )
             except Exception:
                 pass
-        else:
-            # Display actual mapping
-            # TODO: Implement in Phase 3 and Phase 4
-            pass
+
+            # Mapped capabilities list
+            if st.session_state.capability_mapping.get('mappings'):
+                st.markdown("#### Mapped Capabilities")
+
+                for mapping in st.session_state.capability_mapping['mappings'][:20]:  # Show first 20
+                    priority_colors = {
+                        'essential': '#10B981',
+                        'high': '#3B82F6',
+                        'medium': '#F59E0B',
+                        'optional': '#9CA3AF',
+                    }
+                    color = priority_colors.get(mapping.get('priority', 'medium'), '#6B7280')
+
+                    st.markdown(
+                        f"""<div style="
+                            display: flex;
+                            align-items: center;
+                            padding: 8px 12px;
+                            margin: 4px 0;
+                            background: #F9FAFB;
+                            border-radius: 6px;
+                        ">
+                            <span style="
+                                background: {color};
+                                color: white;
+                                padding: 2px 8px;
+                                border-radius: 4px;
+                                font-size: 0.75rem;
+                                margin-right: 12px;
+                            ">{mapping.get('priority', 'medium').upper()}</span>
+                            <strong>{mapping.get('id', '')}</strong>: {mapping.get('name', '')}
+                        </div>""",
+                        unsafe_allow_html=True
+                    )
+
+            # Full document
+            with st.expander("View Full Mapping Document", expanded=False):
+                st.markdown(st.session_state.capability_mapping.get('full_document', ''))
+
+            # HTML Preview
+            if st.session_state.capability_mapping.get('html_visualization'):
+                with st.expander("Preview HTML Visualization", expanded=False):
+                    st.components.v1.html(
+                        st.session_state.capability_mapping['html_visualization'],
+                        height=600,
+                        scrolling=True
+                    )
 
         render_step_navigation(
             current_step=3,
@@ -404,17 +582,101 @@ def render_completion():
     st.markdown("## Assessment Complete!")
     st.success("Your AI Agent Capability Assessment has been generated.")
 
+    # Summary
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Industry", st.session_state.form_data.get('industry', 'N/A'))
+
+    with col2:
+        agent_type = 'N/A'
+        if st.session_state.agent_design_output:
+            agent_type = st.session_state.agent_design_output.get(
+                'confirmed_type',
+                st.session_state.agent_design_output.get('recommended_type', 'N/A')
+            )
+        st.metric("Agent Type", agent_type)
+
+    with col3:
+        cap_count = 0
+        if st.session_state.capability_mapping:
+            cap_count = st.session_state.capability_mapping.get('total_mapped', 0)
+        st.metric("Capabilities Mapped", cap_count)
+
+    st.divider()
+
     st.markdown("### Export Options")
-    st.info("Export functionality will be available in Phase 4.")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.button("Download PDF", disabled=True, use_container_width=True)
+        if st.session_state.capability_mapping and st.session_state.capability_mapping.get('full_document'):
+            st.download_button(
+                "Download Mapping (MD)",
+                data=st.session_state.capability_mapping['full_document'],
+                file_name="capability_mapping.md",
+                mime="text/markdown",
+                use_container_width=True
+            )
+        else:
+            st.button("Download Mapping (MD)", disabled=True, use_container_width=True)
+
     with col2:
-        st.button("Download DOCX", disabled=True, use_container_width=True)
+        if st.session_state.capability_mapping and st.session_state.capability_mapping.get('html_visualization'):
+            st.download_button(
+                "Download HTML Visualization",
+                data=st.session_state.capability_mapping['html_visualization'],
+                file_name="cpt_visualization.html",
+                mime="text/html",
+                use_container_width=True
+            )
+        else:
+            st.button("Download HTML Visualization", disabled=True, use_container_width=True)
+
     with col3:
-        st.button("Download HTML Visualization", disabled=True, use_container_width=True)
+        # Complete package
+        if st.session_state.capability_mapping:
+            package = f"""# DTC AI Agent Capability Assessment
+
+## Use Case
+**Industry:** {st.session_state.form_data.get('industry', 'N/A')}
+**Jurisdiction:** {st.session_state.form_data.get('jurisdiction', 'N/A')}
+
+### Description
+{st.session_state.form_data.get('use_case', 'N/A')}
+
+---
+
+## Research Findings
+{st.session_state.research_results.get('research_areas', {}).get('industry_adoption', {}).get('findings', 'N/A') if st.session_state.research_results else 'N/A'}
+
+---
+
+## Requirements
+{st.session_state.requirements_output.get('full_text', 'N/A') if st.session_state.requirements_output else 'N/A'}
+
+---
+
+## Agent Design
+**Recommended Type:** {agent_type}
+
+{st.session_state.agent_design_output.get('full_document', 'N/A') if st.session_state.agent_design_output else 'N/A'}
+
+---
+
+## Capability Mapping
+{st.session_state.capability_mapping.get('full_document', 'N/A')}
+"""
+            st.download_button(
+                "Download Complete Package",
+                data=package,
+                file_name="dtc_assessment_complete.md",
+                mime="text/markdown",
+                use_container_width=True,
+                type="primary"
+            )
+        else:
+            st.button("Download Complete Package", disabled=True, use_container_width=True)
 
     st.divider()
 
@@ -450,7 +712,7 @@ def main():
     if not check_api_key():
         st.warning(
             "Anthropic API key not configured. Please set ANTHROPIC_API_KEY in your environment. "
-            "Some features will be limited."
+            "Demo mode available with limited functionality."
         )
 
     # Progress indicator
