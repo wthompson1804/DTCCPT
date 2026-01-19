@@ -151,9 +151,25 @@ def render_research_results(results: Dict[str, Any]) -> None:
             "ROI expectations, cost structures, and economic considerations."
         )
 
-    # Full research content (expandable)
+    # Full research report section
     if results.get("full_content"):
-        with st.expander("View Complete Research Report", expanded=False):
+        st.divider()
+        st.markdown("### 📄 Full Research Report")
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.caption("Download the complete research report for offline review or sharing.")
+        with col2:
+            # Download button
+            st.download_button(
+                label="⬇️ Download Report",
+                data=results["full_content"],
+                file_name="dtc_research_report.md",
+                mime="text/markdown",
+                use_container_width=True
+            )
+
+        with st.expander("📋 Preview Full Report", expanded=False):
             st.markdown(results["full_content"])
 
     # Sources section
@@ -168,35 +184,46 @@ def render_preliminary_assessment(assessment: Dict[str, Any]) -> None:
         assessment: Preliminary assessment data
     """
     st.markdown("### Preliminary Assessment")
-    st.caption("Based on research analysis. Review the detailed findings below for supporting evidence.")
 
-    col1, col2, col3 = st.columns(3)
+    # Traffic Light Indicator - Large and prominent
+    go_no_go = assessment.get("go_no_go", "pending")
+    go_config = {
+        "go": {"color": "#10B981", "bg": "#10B98130", "icon": "●", "label": "GO", "desc": "Research supports moving forward"},
+        "caution": {"color": "#F59E0B", "bg": "#F59E0B30", "icon": "●", "label": "CAUTION", "desc": "Proceed with careful planning"},
+        "no-go": {"color": "#EF4444", "bg": "#EF444430", "icon": "●", "label": "NO-GO", "desc": "Significant concerns identified"},
+        "pending": {"color": "#6B7280", "bg": "#6B728030", "icon": "○", "label": "PENDING", "desc": "Awaiting analysis"},
+    }
+    config = go_config.get(go_no_go, go_config["pending"])
+
+    # Traffic light style indicator
+    st.markdown(f"""
+    <div style="
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        background: linear-gradient(135deg, {config['bg']}, transparent);
+        border-left: 6px solid {config['color']};
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    ">
+        <div style="
+            font-size: 4rem;
+            color: {config['color']};
+            line-height: 1;
+            text-shadow: 0 0 20px {config['color']}40;
+        ">{config['icon']}</div>
+        <div>
+            <div style="font-size: 1.5rem; font-weight: bold; color: {config['color']};">{config['label']}</div>
+            <div style="color: #666;">{config['desc']}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Three columns for agent type and confidence
+    col1, col2, col3 = st.columns([2, 2, 1])
 
     with col1:
-        go_no_go = assessment.get("go_no_go", "pending")
-        go_config = {
-            "go": {"color": "#10B981", "icon": "✓", "label": "PROCEED", "desc": "Research supports moving forward"},
-            "caution": {"color": "#F59E0B", "icon": "⚠", "label": "CAUTION", "desc": "Proceed with careful planning"},
-            "no-go": {"color": "#EF4444", "icon": "✗", "label": "NOT RECOMMENDED", "desc": "Significant concerns identified"},
-            "pending": {"color": "#6B7280", "icon": "⏳", "label": "PENDING", "desc": "Awaiting analysis"},
-        }
-        config = go_config.get(go_no_go, go_config["pending"])
-
-        st.markdown(f"""
-        <div style="
-            background-color: {config['color']}15;
-            border: 2px solid {config['color']};
-            border-radius: 8px;
-            padding: 16px;
-            text-align: center;
-        ">
-            <div style="font-size: 2.5rem;">{config['icon']}</div>
-            <div style="font-weight: bold; color: {config['color']};">{config['label']}</div>
-            <div style="font-size: 0.75rem; color: #666; margin-top: 4px;">{config['desc']}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
         agent_type = assessment.get("recommended_type", "TBD")
         type_info = AGENT_TYPE_INFO.get(agent_type, {"name": "Unknown", "short": "Not determined"})
 
@@ -214,57 +241,104 @@ def render_preliminary_assessment(assessment: Dict[str, Any]) -> None:
         </div>
         """, unsafe_allow_html=True)
 
-    with col3:
+    with col2:
         confidence = assessment.get("confidence_level", "medium")
         conf_config = {
             "high": {"color": "#10B981", "desc": "Strong evidence available"},
             "medium": {"color": "#F59E0B", "desc": "Moderate evidence"},
             "low": {"color": "#EF4444", "desc": "Limited information"},
         }
-        config = conf_config.get(confidence, conf_config["medium"])
+        conf = conf_config.get(confidence, conf_config["medium"])
 
         st.markdown(f"""
         <div style="
-            background-color: {config['color']}15;
-            border: 2px solid {config['color']};
+            background-color: {conf['color']}15;
+            border: 2px solid {conf['color']};
             border-radius: 8px;
             padding: 16px;
             text-align: center;
         ">
-            <div style="font-size: 1.5rem; font-weight: bold; color: {config['color']}; text-transform: uppercase;">{confidence}</div>
+            <div style="font-size: 1.5rem; font-weight: bold; color: {conf['color']}; text-transform: uppercase;">{confidence}</div>
             <div style="font-weight: bold;">Confidence</div>
-            <div style="font-size: 0.75rem; color: #666; margin-top: 4px;">{config['desc']}</div>
+            <div style="font-size: 0.75rem; color: #666; margin-top: 4px;">{conf['desc']}</div>
         </div>
         """, unsafe_allow_html=True)
 
     # Agent type explanation (expandable)
     if agent_type in AGENT_TYPE_INFO:
-        with st.expander(f"What is a {agent_type} ({AGENT_TYPE_INFO[agent_type]['name']})?", expanded=False):
+        with st.expander(f"ℹ️ What is a {agent_type} ({AGENT_TYPE_INFO[agent_type]['name']})?", expanded=False):
             st.markdown(AGENT_TYPE_INFO[agent_type]['description'])
 
-    # Key risks and success factors
+    # Recommendation Rationale - THE WHY
     st.markdown("---")
+    st.markdown("#### Why This Recommendation?")
+
+    rationale = assessment.get("recommendation_rationale", "")
+    if rationale:
+        st.markdown(f"""
+        <div style="
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border-left: 4px solid {config['color']};
+        ">
+            {rationale}
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info("Detailed rationale will be provided based on research findings.")
+
+    # Key risks and success factors - with actual bullets
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**⚠️ Key Risk Factors**")
-        if assessment.get("key_risks"):
-            for risk in assessment["key_risks"]:
-                st.markdown(f"- {risk}")
+        st.markdown("##### ⚠️ Key Risk Factors")
+        key_risks = assessment.get("key_risks", [])
+        if key_risks:
+            for risk in key_risks:
+                st.markdown(f"""
+                <div style="
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 8px;
+                    margin-bottom: 8px;
+                    padding: 8px;
+                    background-color: #FEF2F2;
+                    border-radius: 4px;
+                ">
+                    <span style="color: #EF4444;">✗</span>
+                    <span style="color: #374151;">{risk}</span>
+                </div>
+                """, unsafe_allow_html=True)
         else:
-            st.caption("_Risk factors identified in detailed findings below_")
+            st.caption("_No specific risk factors extracted. Review detailed findings for risk information._")
 
     with col2:
-        st.markdown("**✓ Critical Success Factors**")
-        if assessment.get("critical_success_factors"):
-            for factor in assessment["critical_success_factors"]:
-                st.markdown(f"- {factor}")
+        st.markdown("##### ✓ Critical Success Factors")
+        success_factors = assessment.get("critical_success_factors", [])
+        if success_factors:
+            for factor in success_factors:
+                st.markdown(f"""
+                <div style="
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 8px;
+                    margin-bottom: 8px;
+                    padding: 8px;
+                    background-color: #F0FDF4;
+                    border-radius: 4px;
+                ">
+                    <span style="color: #10B981;">✓</span>
+                    <span style="color: #374151;">{factor}</span>
+                </div>
+                """, unsafe_allow_html=True)
         else:
-            st.caption("_Success factors identified in detailed findings below_")
+            st.caption("_No specific success factors extracted. Review detailed findings for guidance._")
 
 
 def render_research_area(area: Dict[str, Any], title: str, description: str) -> None:
-    """Render a single research area with expandable details.
+    """Render a single research area with summary and expandable full content.
 
     Args:
         area: Research area data
@@ -272,6 +346,7 @@ def render_research_area(area: Dict[str, Any], title: str, description: str) -> 
         description: Section description
     """
     findings = area.get("findings", "")
+    summary = area.get("summary", "")
     confidence = area.get("confidence", "medium")
 
     # Confidence indicator
@@ -279,7 +354,7 @@ def render_research_area(area: Dict[str, Any], title: str, description: str) -> 
     conf_color = conf_colors.get(confidence, "#6B7280")
 
     st.markdown(f"""
-    <div style="display: flex; align-items: center; margin-bottom: 8px; gap: 8px;">
+    <div style="display: flex; align-items: center; margin-bottom: 12px; gap: 8px;">
         <span style="
             background-color: {conf_color};
             color: white;
@@ -287,22 +362,33 @@ def render_research_area(area: Dict[str, Any], title: str, description: str) -> 
             border-radius: 4px;
             font-size: 0.7rem;
             font-weight: bold;
-        ">{confidence.upper()}</span>
-        <span style="font-size: 0.85rem; color: #666;">{description}</span>
+        ">{confidence.upper()} CONFIDENCE</span>
     </div>
     """, unsafe_allow_html=True)
 
-    if findings and len(findings) > 50:
-        # Show summary (first paragraph or first 300 chars)
-        summary = findings.split('\n\n')[0] if '\n\n' in findings else findings[:300]
-        if len(findings) > len(summary) + 50:
-            st.markdown(summary + "...")
-            with st.expander("Read full analysis", expanded=False):
+    st.caption(description)
+
+    if summary or findings:
+        # Display the summary prominently
+        display_summary = summary if summary else (findings[:300] + "..." if len(findings) > 300 else findings)
+
+        st.markdown(f"""
+        <div style="
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 12px 0;
+            border-left: 3px solid {conf_color};
+        ">
+            <div style="font-weight: 500; margin-bottom: 8px; color: #374151;">Summary</div>
+            <div style="color: #4B5563; line-height: 1.6;">{display_summary}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Show full content in expander if there's more to show
+        if findings and len(findings) > len(display_summary) + 50:
+            with st.expander("📖 View Full Analysis", expanded=False):
                 st.markdown(findings)
-        else:
-            st.markdown(findings)
-    elif findings:
-        st.markdown(findings)
     else:
         st.info(f"No detailed findings available for {title}. This section will be populated with research results.")
 

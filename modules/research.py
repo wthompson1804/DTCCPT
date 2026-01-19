@@ -21,6 +21,7 @@ class ResearchArea:
     """Represents a research area with its findings."""
     name: str
     findings: str = ""
+    summary: str = ""  # AI-generated 2-3 sentence summary
     sources: List[Dict[str, str]] = field(default_factory=list)
     confidence: str = "medium"  # high, medium, low
 
@@ -45,6 +46,7 @@ class ResearchResult:
     confidence_level: str = "medium"  # high, medium, low
     key_risks: List[str] = field(default_factory=list)
     critical_success_factors: List[str] = field(default_factory=list)
+    recommendation_rationale: str = ""  # Explanation of why go/caution/no-go
 
     # Metadata
     status: str = "pending"  # pending, in_progress, complete, error
@@ -179,6 +181,21 @@ When recommending an agent type (T0-T4), consider:
 - T3: Cognitive autonomy (planning, learning, adaptation)
 - T4: Multi-agent systems (distributed, collaborative)
 
+IMPORTANT OUTPUT FORMAT REQUIREMENTS:
+
+1. For each research section, start with a "**Summary:**" line containing a 2-3 sentence overview, then provide detailed findings below.
+
+2. For your Preliminary Assessment, you MUST include:
+   - **Go/No-Go Recommendation:** [Go/Caution/No-Go]
+   - **Recommended Agent Type:** [T0-T4]
+   - **Confidence Level:** [High/Medium/Low]
+   - **Key Risk Factors:**
+     - [Bullet list of 3-5 specific risks]
+   - **Critical Success Factors:**
+     - [Bullet list of 3-5 specific success factors]
+   - **Recommendation Rationale:**
+     [A paragraph explaining WHY you made this recommendation. Be specific about the key factors that led to your conclusion. If recommending caution or no-go, explain what would need to change for it to become viable.]
+
 Provide your research in a structured format with clear sections for each research area.""")
 
         # Execute research query
@@ -196,12 +213,21 @@ Provide your research in a structured format with clear sections for each resear
         # Update result with findings
         result.status = "complete"
 
-        # Extract each research section
+        # Extract each research section with findings and summaries
         result.industry_adoption.findings = extract_section(research_content, "Industry AI Adoption")
+        result.industry_adoption.summary = extract_summary(result.industry_adoption.findings)
+
         result.regulatory_environment.findings = extract_section(research_content, "Regulatory Environment")
+        result.regulatory_environment.summary = extract_summary(result.regulatory_environment.findings)
+
         result.technical_integration.findings = extract_section(research_content, "Technical Integration")
+        result.technical_integration.summary = extract_summary(result.technical_integration.findings)
+
         result.risk_failure_modes.findings = extract_section(research_content, "Risk & Failure Modes")
+        result.risk_failure_modes.summary = extract_summary(result.risk_failure_modes.findings)
+
         result.economic_viability.findings = extract_section(research_content, "Economic Viability")
+        result.economic_viability.summary = extract_summary(result.economic_viability.findings)
 
         # Update confidence for each area based on content quality
         for area in [result.industry_adoption, result.regulatory_environment,
@@ -228,6 +254,9 @@ Provide your research in a structured format with clear sections for each resear
             result.key_risks = extract_bullet_list(research_content, "Risk Factors")
         if not result.critical_success_factors:
             result.critical_success_factors = extract_bullet_list(research_content, "Success Factors")
+
+        # Extract recommendation rationale
+        result.recommendation_rationale = extract_rationale(research_content)
 
         return result
 
@@ -423,6 +452,100 @@ def extract_bullet_list(content: str, section_name: str) -> List[str]:
     return items[:5]  # Return max 5 items
 
 
+def extract_summary(section_content: str) -> str:
+    """Extract or generate a summary from section content.
+
+    Looks for explicit **Summary:** markers, or takes the first paragraph.
+
+    Args:
+        section_content: Full section content
+
+    Returns:
+        Summary string (2-3 sentences)
+    """
+    import re
+
+    if not section_content:
+        return ""
+
+    # Look for explicit summary marker
+    patterns = [
+        r"\*\*Summary[:\*]*\*\*\s*(.+?)(?=\n\n|\n\*\*|\n#|\Z)",
+        r"Summary[:\s]+(.+?)(?=\n\n|\n\*\*|\n#|\Z)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, section_content, re.IGNORECASE | re.DOTALL)
+        if match:
+            summary = match.group(1).strip()
+            if len(summary) > 30:
+                return summary
+
+    # Fallback: use first paragraph or first 2-3 sentences
+    paragraphs = section_content.split('\n\n')
+    for para in paragraphs:
+        para = para.strip()
+        # Skip if it looks like a header or bullet list
+        if para and not para.startswith('#') and not para.startswith('-') and not para.startswith('*'):
+            # Get first 2-3 sentences (up to ~300 chars)
+            sentences = re.split(r'(?<=[.!?])\s+', para)
+            summary_sentences = []
+            total_len = 0
+            for sent in sentences[:3]:
+                if total_len + len(sent) < 350:
+                    summary_sentences.append(sent)
+                    total_len += len(sent)
+                else:
+                    break
+            if summary_sentences:
+                return ' '.join(summary_sentences)
+
+    # Last resort: first 250 characters
+    return section_content[:250].strip() + "..." if len(section_content) > 250 else section_content
+
+
+def extract_rationale(content: str) -> str:
+    """Extract the recommendation rationale from content.
+
+    Args:
+        content: Full research content
+
+    Returns:
+        Rationale explanation string
+    """
+    import re
+
+    # Look for explicit rationale section
+    patterns = [
+        r"\*\*Recommendation Rationale[:\*]*\*\*\s*(.+?)(?=\n\n\*\*|\n#{1,4}\s|\Z)",
+        r"Recommendation Rationale[:\s]+(.+?)(?=\n\n\*\*|\n#{1,4}\s|\Z)",
+        r"\*\*Rationale[:\*]*\*\*\s*(.+?)(?=\n\n\*\*|\n#{1,4}\s|\Z)",
+        r"#{1,4}\s*Rationale[^\n]*\n(.+?)(?=\n#{1,4}\s|\Z)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+        if match:
+            rationale = match.group(1).strip()
+            if len(rationale) > 50:
+                return rationale
+
+    # Fallback: look for reasoning in preliminary assessment section
+    prelim_pattern = r"#{1,4}\s*Preliminary Assessment[^\n]*\n(.*?)(?=\n#{1,4}\s[^#]|\Z)"
+    match = re.search(prelim_pattern, content, re.IGNORECASE | re.DOTALL)
+    if match:
+        prelim_section = match.group(1)
+        # Look for explanatory text (not just bullet points)
+        paragraphs = prelim_section.split('\n\n')
+        for para in paragraphs:
+            para = para.strip()
+            # Find paragraphs that look like explanatory text
+            if para and len(para) > 100 and not para.startswith('-') and not para.startswith('*') and not para.startswith('**'):
+                return para
+
+    return ""
+
+
 def format_research_for_display(result: ResearchResult) -> Dict[str, Any]:
     """Format research results for Streamlit display.
 
@@ -450,31 +573,37 @@ def format_research_for_display(result: ResearchResult) -> Dict[str, Any]:
             "confidence_level": result.confidence_level,
             "key_risks": result.key_risks,
             "critical_success_factors": result.critical_success_factors,
+            "recommendation_rationale": result.recommendation_rationale,
         },
         "research_areas": {
             "industry_adoption": {
                 "name": result.industry_adoption.name,
                 "findings": result.industry_adoption.findings,
+                "summary": result.industry_adoption.summary,
                 "confidence": result.industry_adoption.confidence,
             },
             "regulatory_environment": {
                 "name": result.regulatory_environment.name,
                 "findings": result.regulatory_environment.findings,
+                "summary": result.regulatory_environment.summary,
                 "confidence": result.regulatory_environment.confidence,
             },
             "technical_integration": {
                 "name": result.technical_integration.name,
                 "findings": result.technical_integration.findings,
+                "summary": result.technical_integration.summary,
                 "confidence": result.technical_integration.confidence,
             },
             "risk_failure_modes": {
                 "name": result.risk_failure_modes.name,
                 "findings": result.risk_failure_modes.findings,
+                "summary": result.risk_failure_modes.summary,
                 "confidence": result.risk_failure_modes.confidence,
             },
             "economic_viability": {
                 "name": result.economic_viability.name,
                 "findings": result.economic_viability.findings,
+                "summary": result.economic_viability.summary,
                 "confidence": result.economic_viability.confidence,
             },
         },
