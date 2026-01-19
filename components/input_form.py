@@ -42,6 +42,14 @@ JURISDICTIONS = [
     "Other"
 ]
 
+# Implementation timelines with descriptions
+TIMELINES = [
+    ("Proof of Concept", "Testing feasibility, 1-3 months"),
+    ("Pilot Project", "Limited deployment, 3-6 months"),
+    ("Production Deployment", "Full rollout, 6-12 months"),
+    ("Scaling Existing", "Expanding current system"),
+]
+
 
 def render_input_form() -> Tuple[bool, Dict[str, Any]]:
     """Render the input form for collecting use case information.
@@ -61,7 +69,7 @@ def render_input_form() -> Tuple[bool, Dict[str, Any]]:
 
         with col1:
             industry_select = st.selectbox(
-                "Industry Sector",
+                "Industry Sector *",
                 options=INDUSTRIES,
                 help="Select the primary industry for your AI agent deployment"
             )
@@ -69,7 +77,7 @@ def render_input_form() -> Tuple[bool, Dict[str, Any]]:
         with col2:
             if industry_select == "Other":
                 industry = st.text_input(
-                    "Specify Industry",
+                    "Specify Industry *",
                     placeholder="Enter your industry"
                 )
             else:
@@ -77,7 +85,7 @@ def render_input_form() -> Tuple[bool, Dict[str, Any]]:
 
         # Use case description
         use_case = st.text_area(
-            "Use Case Description",
+            "Use Case Description *",
             placeholder=(
                 "Describe what you want your AI agent to do. Include:\n"
                 "- Primary function or task\n"
@@ -89,48 +97,55 @@ def render_input_form() -> Tuple[bool, Dict[str, Any]]:
             help="Be specific about the AI agent's role and responsibilities"
         )
 
-        # Jurisdiction
+        # Jurisdiction and Timeline (both visible, not hidden)
         col3, col4 = st.columns(2)
 
         with col3:
             jurisdiction_select = st.selectbox(
-                "Primary Jurisdiction",
+                "Primary Jurisdiction *",
                 options=JURISDICTIONS,
-                help="Select the primary regulatory jurisdiction"
+                help="Select the primary regulatory jurisdiction for compliance requirements"
             )
 
-        with col4:
             if jurisdiction_select == "Other":
                 jurisdiction = st.text_input(
-                    "Specify Jurisdiction",
+                    "Specify Jurisdiction *",
                     placeholder="Enter jurisdiction"
                 )
             else:
                 jurisdiction = jurisdiction_select
 
-        # Additional context
-        with st.expander("Additional Context (Optional)", expanded=False):
-            organization_size = st.selectbox(
-                "Organization Size",
-                options=["Startup (<50)", "SMB (50-500)", "Enterprise (500-5000)", "Large Enterprise (5000+)"],
-                index=2
-            )
-
+        with col4:
+            timeline_options = [t[0] for t in TIMELINES]
             timeline = st.selectbox(
-                "Implementation Timeline",
-                options=["Proof of Concept", "Pilot Project", "Production Deployment", "Scaling Existing"],
-                index=1
+                "Implementation Timeline *",
+                options=timeline_options,
+                index=1,
+                help="Select your expected implementation timeline"
             )
+            # Show description for selected timeline
+            timeline_desc = next((t[1] for t in TIMELINES if t[0] == timeline), "")
+            st.caption(f"_{timeline_desc}_")
 
+        # Organization size
+        organization_size = st.selectbox(
+            "Organization Size",
+            options=["Startup (<50)", "SMB (50-500)", "Enterprise (500-5000)", "Large Enterprise (5000+)"],
+            index=2,
+            help="Select your organization size to help tailor recommendations"
+        )
+
+        # Additional context (optional)
+        with st.expander("Additional Context (Optional)", expanded=False):
             existing_systems = st.text_area(
-                "Existing Systems (if any)",
-                placeholder="List any existing systems the AI agent needs to integrate with",
+                "Existing Systems",
+                placeholder="List any existing systems the AI agent needs to integrate with (e.g., SCADA, ERP, CRM)",
                 height=80
             )
 
             safety_requirements = st.text_area(
-                "Safety Requirements (if any)",
-                placeholder="Describe any specific safety or compliance requirements",
+                "Safety Requirements",
+                placeholder="Describe any specific safety, compliance, or regulatory requirements",
                 height=80
             )
 
@@ -175,7 +190,7 @@ def render_input_summary(form_data: Dict[str, Any]) -> None:
     """
     st.markdown("### Assessment Context")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric("Industry", form_data.get("industry", "N/A"))
@@ -186,7 +201,10 @@ def render_input_summary(form_data: Dict[str, Any]) -> None:
     with col3:
         st.metric("Timeline", form_data.get("timeline", "N/A"))
 
-    with st.expander("Use Case Details", expanded=True):
+    with col4:
+        st.metric("Org Size", form_data.get("organization_size", "N/A").split(" ")[0])
+
+    with st.expander("Use Case Details", expanded=False):
         st.markdown(form_data.get("use_case", "N/A"))
 
         if form_data.get("existing_systems"):

@@ -50,6 +50,7 @@ class ResearchResult:
     status: str = "pending"  # pending, in_progress, complete, error
     error_message: Optional[str] = None
     all_sources: List[Dict[str, str]] = field(default_factory=list)
+    full_content: str = ""  # Store full research response
 
 
 def load_research_template() -> str:
@@ -189,22 +190,44 @@ Provide your research in a structured format with clear sections for each resear
         # Parse response into research result
         research_content = response.content
 
+        # Store full content for reference
+        result.full_content = research_content
+
         # Update result with findings
         result.status = "complete"
 
-        # Extract preliminary assessment from response
-        # In a full implementation, this would parse the structured response
-        # For now, we store the full response and extract key indicators
+        # Extract each research section
         result.industry_adoption.findings = extract_section(research_content, "Industry AI Adoption")
         result.regulatory_environment.findings = extract_section(research_content, "Regulatory Environment")
         result.technical_integration.findings = extract_section(research_content, "Technical Integration")
         result.risk_failure_modes.findings = extract_section(research_content, "Risk & Failure Modes")
         result.economic_viability.findings = extract_section(research_content, "Economic Viability")
 
+        # Update confidence for each area based on content quality
+        for area in [result.industry_adoption, result.regulatory_environment,
+                     result.technical_integration, result.risk_failure_modes,
+                     result.economic_viability]:
+            if len(area.findings) > 500:
+                area.confidence = "high"
+            elif len(area.findings) > 100:
+                area.confidence = "medium"
+            else:
+                area.confidence = "low"
+
         # Extract recommendations
         result.go_no_go = extract_go_no_go(research_content)
         result.recommended_type = extract_agent_type(research_content)
         result.confidence_level = extract_confidence(research_content)
+
+        # Extract key risks and success factors
+        result.key_risks = extract_bullet_list(research_content, "Key Risk Factors")
+        result.critical_success_factors = extract_bullet_list(research_content, "Critical Success Factors")
+
+        # If no risks extracted, try alternative patterns
+        if not result.key_risks:
+            result.key_risks = extract_bullet_list(research_content, "Risk Factors")
+        if not result.critical_success_factors:
+            result.critical_success_factors = extract_bullet_list(research_content, "Success Factors")
 
         return result
 
@@ -251,6 +274,13 @@ def conduct_research(
 def extract_section(content: str, section_name: str) -> str:
     """Extract a section from the research content.
 
+    Handles various header formats:
+    - ## 1. Industry AI Adoption
+    - ## Industry AI Adoption
+    - # Industry AI Adoption
+    - ### INDUSTRY AI ADOPTION
+    - **Industry AI Adoption**
+
     Args:
         content: Full research content
         section_name: Name of section to extract
@@ -258,15 +288,48 @@ def extract_section(content: str, section_name: str) -> str:
     Returns:
         Section content or empty string
     """
-    # Simple extraction - look for section header and get content until next header
     import re
 
-    # Try to find the section
-    pattern = rf"(?:##?\s*\d*\.?\s*)?{re.escape(section_name)}.*?\n(.*?)(?=\n##|\n#|\Z)"
-    match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+    # Build flexible patterns for the section name
+    # Allow for numbering, different header levels, and case variations
+    section_words = section_name.split()
 
-    if match:
-        return match.group(1).strip()
+    # Pattern variations to try
+    patterns = [
+        # Numbered markdown header: ## 1. Industry AI Adoption
+        rf"#{1,4}\s*\d+\.?\s*{re.escape(section_name)}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+        # Plain markdown header: ## Industry AI Adoption
+        rf"#{1,4}\s*{re.escape(section_name)}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+        # Bold header: **Industry AI Adoption**
+        rf"\*\*{re.escape(section_name)}\*\*[^\n]*\n(.*?)(?=\n\*\*|\n#{1,4}\s|\Z)",
+        # Numbered without hash: 1. Industry AI Adoption
+        rf"^\d+\.\s*{re.escape(section_name)}[^\n]*\n(.*?)(?=\n\d+\.|\n#{1,4}\s|\Z)",
+    ]
+
+    # Also try with partial matches for key words
+    if len(section_words) >= 2:
+        # Match on key distinctive words (e.g., "Industry" + "Adoption")
+        key_word1 = re.escape(section_words[0])
+        key_word2 = re.escape(section_words[-1])
+        patterns.extend([
+            rf"#{1,4}\s*\d*\.?\s*[^\n]*{key_word1}[^\n]*{key_word2}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+        ])
+
+    for pattern in patterns:
+        match = re.search(pattern, content, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+        if match:
+            result = match.group(1).strip()
+            # Ensure we got actual content, not just whitespace
+            if len(result) > 20:
+                return result
+
+    # Last resort: try to find any section that contains the key words
+    for word in section_words:
+        if len(word) > 4:  # Skip short words like "AI", "&"
+            pattern = rf"#{1,4}[^\n]*{re.escape(word)}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)"
+            match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+            if match and len(match.group(1).strip()) > 50:
+                return match.group(1).strip()
 
     return ""
 
@@ -323,6 +386,43 @@ def extract_confidence(content: str) -> str:
     return "medium"
 
 
+def extract_bullet_list(content: str, section_name: str) -> List[str]:
+    """Extract a bullet list from content following a section header.
+
+    Args:
+        content: Full research content
+        section_name: Name of section containing the bullet list
+
+    Returns:
+        List of bullet items
+    """
+    import re
+
+    items = []
+
+    # Try to find the section and extract bullets
+    patterns = [
+        rf"\*\*{re.escape(section_name)}[:\*]*\*\*[^\n]*\n((?:[-*•]\s*[^\n]+\n?)+)",
+        rf"{re.escape(section_name)}[:\s]*\n((?:[-*•]\s*[^\n]+\n?)+)",
+        rf"#{1,4}\s*{re.escape(section_name)}[^\n]*\n((?:[-*•]\s*[^\n]+\n?)+)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE | re.MULTILINE)
+        if match:
+            bullet_text = match.group(1)
+            # Extract individual bullet items
+            bullet_matches = re.findall(r'[-*•]\s*(.+?)(?=\n[-*•]|\n\n|\Z)', bullet_text, re.DOTALL)
+            for item in bullet_matches:
+                clean_item = item.strip()
+                if clean_item and len(clean_item) > 3:
+                    items.append(clean_item)
+            if items:
+                break
+
+    return items[:5]  # Return max 5 items
+
+
 def format_research_for_display(result: ResearchResult) -> Dict[str, Any]:
     """Format research results for Streamlit display.
 
@@ -332,6 +432,11 @@ def format_research_for_display(result: ResearchResult) -> Dict[str, Any]:
     Returns:
         Dictionary formatted for UI display
     """
+    # Extract sources from full content if not already populated
+    sources = result.all_sources
+    if not sources and result.full_content:
+        sources = extract_sources(result.full_content)
+
     return {
         "summary": {
             "industry": result.industry,
@@ -373,6 +478,39 @@ def format_research_for_display(result: ResearchResult) -> Dict[str, Any]:
                 "confidence": result.economic_viability.confidence,
             },
         },
-        "sources": result.all_sources,
+        "sources": sources,
+        "full_content": result.full_content,
         "error": result.error_message,
     }
+
+
+def extract_sources(content: str) -> List[Dict[str, str]]:
+    """Extract source citations from research content.
+
+    Args:
+        content: Full research content
+
+    Returns:
+        List of source dictionaries with title and url keys
+    """
+    import re
+
+    sources = []
+
+    # Look for markdown links: [Title](URL)
+    link_pattern = r'\[([^\]]+)\]\((https?://[^\)]+)\)'
+    matches = re.findall(link_pattern, content)
+
+    for title, url in matches:
+        if not any(s.get('url') == url for s in sources):  # Avoid duplicates
+            sources.append({"title": title.strip(), "url": url.strip()})
+
+    # Look for plain URLs with context
+    url_pattern = r'(?:^|\s)(https?://[^\s\)]+)'
+    url_matches = re.findall(url_pattern, content)
+
+    for url in url_matches:
+        if not any(s.get('url') == url for s in sources):
+            sources.append({"title": url.split('/')[2], "url": url})
+
+    return sources[:15]  # Limit to 15 sources
