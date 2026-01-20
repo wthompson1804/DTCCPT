@@ -323,14 +323,17 @@ def extract_section(content: str, section_name: str) -> str:
     # Allow for numbering, different header levels, and case variations
     section_words = section_name.split()
 
-    # Name variations mapping
+    # Name variations mapping - be specific to avoid matching executive summary
     name_variations = {
-        "Industry AI Adoption": ["Industry AI Adoption", "AI Adoption", "Industry Adoption", "Current State", "Market Analysis"],
-        "Regulatory Environment": ["Regulatory Environment", "Regulations", "Regulatory", "Compliance", "Legal Framework", "Standards"],
-        "Technical Integration": ["Technical Integration", "Technical", "Integration", "Technology Stack", "Architecture"],
-        "Risk & Failure Modes": ["Risk & Failure Modes", "Risk and Failure", "Risks", "Failure Modes", "Risk Analysis", "Risk Factors"],
-        "Economic Viability": ["Economic Viability", "Economic", "Financial", "ROI", "Cost Analysis", "Business Case"],
+        "Industry AI Adoption": ["Industry AI Adoption", "AI Adoption Patterns", "Industry Adoption Trends", "Sector AI Adoption"],
+        "Regulatory Environment": ["Regulatory Environment", "Regulatory Landscape", "Regulatory Framework", "Compliance Requirements", "Legal Framework"],
+        "Technical Integration": ["Technical Integration", "Integration Requirements", "Technology Stack", "Technical Architecture", "System Integration"],
+        "Risk & Failure Modes": ["Risk & Failure Modes", "Risk and Failure Modes", "Failure Modes", "Risk Analysis", "Risk Assessment"],
+        "Economic Viability": ["Economic Viability", "Economic Analysis", "Financial Viability", "ROI Analysis", "Cost-Benefit"],
     }
+
+    # Sections to explicitly skip (these contain summaries, not detailed content)
+    skip_sections = ["executive summary", "preliminary assessment", "summary", "overview", "introduction", "conclusion"]
 
     variations = name_variations.get(section_name, [section_name])
 
@@ -343,7 +346,7 @@ def extract_section(content: str, section_name: str) -> str:
             rf"#{1,4}\s*\d+\.?\s*{re.escape(variation)}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
             # Plain markdown header: ## Industry AI Adoption
             rf"#{1,4}\s*{re.escape(variation)}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
-            # Bold header: **Industry AI Adoption**
+            # Bold header: **1. Industry AI Adoption**
             rf"\*\*\d*\.?\s*{re.escape(variation)}[:\*]*\*\*[^\n]*\n(.*?)(?=\n\*\*\d*\.|\n#{1,4}\s|\Z)",
             # Numbered without hash: 1. Industry AI Adoption
             rf"^\d+\.\s*{re.escape(variation)}[^\n]*\n(.*?)(?=\n\d+\.|\n#{1,4}\s|\Z)",
@@ -363,26 +366,29 @@ def extract_section(content: str, section_name: str) -> str:
             if match:
                 result = match.group(1).strip()
                 # Ensure we got actual content, not just whitespace
+                # Also check we're not in a skip section by looking at what came before
                 if len(result) > 20:
-                    return result
+                    # Check if this is actually from a skip section
+                    match_start = match.start()
+                    preceding_text = content[max(0, match_start-200):match_start].lower()
+                    is_skip_section = any(skip in preceding_text for skip in skip_sections)
+                    if not is_skip_section:
+                        return result
 
     # Last resort: try to find any section that contains the key words
-    for word in section_words:
-        if len(word) > 4:  # Skip short words like "AI", "&"
-            pattern = rf"#{1,4}[^\n]*{re.escape(word)}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)"
-            match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
-            if match and len(match.group(1).strip()) > 50:
-                return match.group(1).strip()
-
-    # Ultra fallback: Split content by major headers and find best match
-    header_splits = re.split(r'\n#{1,3}\s+\d*\.?\s*', content)
-    for section in header_splits:
-        section_lower = section.lower()
-        for word in section_words:
-            if len(word) > 3 and word.lower() in section_lower[:100]:
-                # Found a section that starts with content related to our search
-                if len(section) > 50:
-                    return section.strip()
+    # But be more strict - require multiple key words and exclude skip sections
+    key_words = [w for w in section_words if len(w) > 3]
+    if len(key_words) >= 2:
+        # Look for headers containing multiple key words
+        pattern = rf"#{1,4}\s*\d*\.?\s*([^\n]*)\n(.*?)(?=\n#{1,4}\s|\Z)"
+        for match in re.finditer(pattern, content, re.DOTALL | re.IGNORECASE):
+            header = match.group(1).lower()
+            # Check header contains key words and isn't a skip section
+            if sum(1 for kw in key_words if kw.lower() in header) >= 2:
+                if not any(skip in header for skip in skip_sections):
+                    result = match.group(2).strip()
+                    if len(result) > 50:
+                        return result
 
     return ""
 

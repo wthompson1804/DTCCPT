@@ -115,59 +115,70 @@ def render_step_navigation(
                     st.session_state['current_step'] = current_step - 1
                     st.rerun()
 
-    # Highlighted action section with checkbox and continue button
+    # Highlighted action section with checkbox and continue button INSIDE
     if can_proceed:
+        # Use custom CSS to style the container
         st.markdown("""
-        <div style="
+        <style>
+        div[data-testid="stVerticalBlock"]:has(> div.action-bar-marker) {
             background: linear-gradient(135deg, #EBF4FF 0%, #DBEAFE 100%);
             border: 2px solid #3B82F6;
             border-radius: 12px;
             padding: 20px;
             margin: 16px 0;
             box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-        ">
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # Create a container for the action bar
+        with st.container():
+            # Marker div for CSS targeting
+            st.markdown('<div class="action-bar-marker"></div>', unsafe_allow_html=True)
+
+            # Header inside the bar
+            st.markdown("""
             <div style="
                 display: flex;
                 align-items: center;
                 gap: 8px;
-                margin-bottom: 8px;
+                margin-bottom: 12px;
             ">
-                <span style="font-size: 1.2rem;">&#8594;</span>
-                <span style="font-weight: 600; color: #1E40AF;">Ready to Continue?</span>
+                <span style="font-size: 1.2rem; color: #3B82F6;">&#8594;</span>
+                <span style="font-weight: 600; color: #1E40AF; font-size: 1.1rem;">Ready to Continue?</span>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
-        # Use container to put checkbox and button inside the visual area
-        col1, col2 = st.columns([3, 1])
+            # Checkbox and button inside the styled container
+            col1, col2 = st.columns([3, 1])
 
-        confirmed = True
-        with col1:
-            if show_confirmation:
-                confirmed = st.checkbox(
-                    "I have reviewed the results and want to proceed",
-                    key=f"confirm_step_{current_step}"
-                )
+            confirmed = True
+            with col1:
+                if show_confirmation:
+                    confirmed = st.checkbox(
+                        "I have reviewed the results and want to proceed",
+                        key=f"confirm_step_{current_step}"
+                    )
 
-        with col2:
-            if current_step < 3:
-                if st.button(
-                    next_label,
-                    use_container_width=True,
-                    disabled=not confirmed,
-                    type="primary"
-                ):
-                    if on_next:
-                        on_next()
-                    else:
-                        st.session_state['current_step'] = current_step + 1
+            with col2:
+                if current_step < 3:
+                    if st.button(
+                        next_label,
+                        use_container_width=True,
+                        disabled=not confirmed,
+                        type="primary"
+                    ):
+                        if on_next:
+                            on_next()
+                        else:
+                            st.session_state['current_step'] = current_step + 1
+                            st.rerun()
+                else:
+                    if st.button(
+                        "Complete Assessment",
+                        use_container_width=True,
+                        disabled=not confirmed,
+                        type="primary"
+                    ):
+                        st.session_state['assessment_complete'] = True
                         st.rerun()
-            else:
-                if st.button(
-                    "Complete Assessment",
-                    use_container_width=True,
-                    disabled=not confirmed,
-                    type="primary"
-                ):
-                    st.session_state['assessment_complete'] = True
-                    st.rerun()
