@@ -508,73 +508,163 @@ def render_step_3_capability_mapping():
 
             st.divider()
 
-            # Capability categories visualization
-            st.markdown("#### Capability Categories")
-            try:
-                config = load_config()
-                categories = config.get('categories', {})
+            # Tabbed interface for capability categories
+            st.markdown("#### Capability Priority View")
 
-                cols = st.columns(3)
-                for i, (cat_id, cat_info) in enumerate(categories.items()):
-                    with cols[i % 3]:
-                        color = cat_info.get('color', '#6B7280')
-                        st.markdown(
-                            f"""<div style="
-                                background-color: {color}20;
-                                border-left: 4px solid {color};
-                                padding: 12px;
-                                margin: 8px 0;
-                                border-radius: 4px;
-                            ">
-                            <strong>{cat_id}</strong>: {cat_info.get('name', '')}
-                            </div>""",
-                            unsafe_allow_html=True
-                        )
-            except Exception:
-                pass
+            # Create tabs for priority categories
+            tab_all, tab_essential, tab_advanced, tab_optional = st.tabs([
+                "All Capabilities",
+                f"Essential ({st.session_state.capability_mapping.get('essential_count', 0)})",
+                f"Advanced ({st.session_state.capability_mapping.get('advanced_count', 0)})",
+                f"Optional ({st.session_state.capability_mapping.get('optional_count', 0)})"
+            ])
 
-            # Mapped capabilities list
-            if st.session_state.capability_mapping.get('mappings'):
-                st.markdown("#### Mapped Capabilities")
+            # Get mapping lookups
+            mappings = st.session_state.capability_mapping.get('mappings', [])
+            mapping_lookup = {m.get('id'): m for m in mappings}
+            essential_ids = set(st.session_state.capability_mapping.get('essential_capabilities', []))
+            advanced_ids = set(st.session_state.capability_mapping.get('advanced_capabilities', []))
+            optional_ids = set(st.session_state.capability_mapping.get('optional_capabilities', []))
 
-                for mapping in st.session_state.capability_mapping['mappings'][:20]:  # Show first 20
-                    priority_colors = {
-                        'essential': '#10B981',
-                        'high': '#3B82F6',
-                        'medium': '#F59E0B',
-                        'optional': '#9CA3AF',
-                    }
-                    color = priority_colors.get(mapping.get('priority', 'medium'), '#6B7280')
+            # Category colors
+            category_colors = {
+                "PK": "#3B82F6",  # blue
+                "CG": "#F97316",  # orange
+                "LA": "#A855F7",  # purple
+                "AE": "#6B7280",  # gray
+                "IC": "#14B8A6",  # teal
+                "GS": "#EF4444",  # red
+            }
 
-                    st.markdown(
-                        f"""<div style="
-                            display: flex;
-                            align-items: center;
-                            padding: 8px 12px;
-                            margin: 4px 0;
-                            background: #F9FAFB;
-                            border-radius: 6px;
-                        ">
-                            <span style="
-                                background: {color};
-                                color: white;
-                                padding: 2px 8px;
-                                border-radius: 4px;
-                                font-size: 0.75rem;
-                                margin-right: 12px;
-                            ">{mapping.get('priority', 'medium').upper()}</span>
-                            <strong>{mapping.get('id', '')}</strong>: {mapping.get('name', '')}
-                        </div>""",
-                        unsafe_allow_html=True
-                    )
+            def render_cpt_table(highlight_ids: set = None, filter_mode: str = "all"):
+                """Render the full CPT table with highlighting."""
+                if capabilities is None:
+                    st.warning("Capabilities not loaded")
+                    return
 
-            # Full document
+                # Legend
+                st.markdown("""
+                <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px; background: #F9FAFB; border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 6px;"><div style="width: 14px; height: 14px; background: #3B82F6; border-radius: 3px;"></div><span style="font-size: 0.8rem;">PK: Perception</span></div>
+                    <div style="display: flex; align-items: center; gap: 6px;"><div style="width: 14px; height: 14px; background: #F97316; border-radius: 3px;"></div><span style="font-size: 0.8rem;">CG: Cognition</span></div>
+                    <div style="display: flex; align-items: center; gap: 6px;"><div style="width: 14px; height: 14px; background: #A855F7; border-radius: 3px;"></div><span style="font-size: 0.8rem;">LA: Learning</span></div>
+                    <div style="display: flex; align-items: center; gap: 6px;"><div style="width: 14px; height: 14px; background: #6B7280; border-radius: 3px;"></div><span style="font-size: 0.8rem;">AE: Action</span></div>
+                    <div style="display: flex; align-items: center; gap: 6px;"><div style="width: 14px; height: 14px; background: #14B8A6; border-radius: 3px;"></div><span style="font-size: 0.8rem;">IC: Interaction</span></div>
+                    <div style="display: flex; align-items: center; gap: 6px;"><div style="width: 14px; height: 14px; background: #EF4444; border-radius: 3px;"></div><span style="font-size: 0.8rem;">GS: Governance</span></div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Build all capability cards
+                all_cards_html = []
+
+                for cat_id, cat_data in capabilities.get('capabilities', {}).items():
+                    cat_name = cat_data.get('name', cat_id)
+                    color = category_colors.get(cat_id, '#6B7280')
+
+                    for cap_id, cap_data in cat_data.get('capabilities', {}).items():
+                        cap_name = cap_data.get('name', '')
+                        cap_desc = cap_data.get('description', '')
+
+                        # Determine if this capability should be highlighted
+                        is_highlighted = highlight_ids is None or cap_id in highlight_ids
+                        mapping = mapping_lookup.get(cap_id)
+                        priority = mapping.get('priority', '') if mapping else ''
+                        justification = mapping.get('justification', '') if mapping else ''
+
+                        # Priority badge
+                        priority_badge = ""
+                        if priority:
+                            badge_colors = {
+                                "essential": "#10B981",
+                                "high": "#3B82F6",
+                                "medium": "#F59E0B",
+                                "optional": "#9CA3AF",
+                            }
+                            badge_color = badge_colors.get(priority, "#6B7280")
+                            priority_badge = f'<span style="background: {badge_color}; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.6rem; font-weight: bold;">{priority.upper()}</span>'
+
+                        # Styling based on highlight state
+                        opacity = "1" if is_highlighted else "0.25"
+                        transform = "scale(1)" if is_highlighted else "scale(0.95)"
+                        filter_style = "" if is_highlighted else "grayscale(70%)"
+
+                        card_html = f'''
+                        <div style="
+                            background: white;
+                            border: 2px solid {color};
+                            border-radius: 8px;
+                            overflow: hidden;
+                            opacity: {opacity};
+                            transform: {transform};
+                            filter: {filter_style};
+                            transition: all 0.3s ease;
+                            min-height: 90px;
+                        " class="cap-card" onmouseover="this.style.transform='translateY(-4px) scale(1.02)'; this.style.boxShadow='0 8px 25px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='{transform}'; this.style.boxShadow='none';">
+                            <div style="background: {color}20; border-bottom: 2px solid {color}; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: bold; font-size: 0.85rem;">{cap_id}</span>
+                                {priority_badge}
+                            </div>
+                            <div style="padding: 8px 10px;">
+                                <div style="font-size: 0.8rem; font-weight: 500; line-height: 1.3; margin-bottom: 4px;">{cap_name}</div>
+                                <div style="font-size: 0.7rem; color: #6B7280; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">{cap_desc[:100]}...</div>
+                                {f'<div style="font-size: 0.65rem; color: #4B5563; margin-top: 6px; padding-top: 6px; border-top: 1px solid #E5E7EB;"><strong>Why:</strong> {justification[:80]}...</div>' if justification and is_highlighted else ''}
+                            </div>
+                        </div>
+                        '''
+                        all_cards_html.append(card_html)
+
+                # Render as grid
+                grid_html = f'''
+                <div style="
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                    gap: 12px;
+                    padding: 8px 0;
+                ">
+                    {''.join(all_cards_html)}
+                </div>
+                '''
+                st.markdown(grid_html, unsafe_allow_html=True)
+
+            # Render content for each tab
+            with tab_all:
+                st.caption("Showing all 45 CPT capabilities. Mapped capabilities are highlighted with priority badges.")
+                all_mapped = essential_ids | advanced_ids | optional_ids
+                render_cpt_table(highlight_ids=all_mapped if all_mapped else None, filter_mode="all")
+
+            with tab_essential:
+                if essential_ids:
+                    st.caption(f"Highlighting {len(essential_ids)} essential (must-have) capabilities. Other capabilities are grayed out.")
+                    render_cpt_table(highlight_ids=essential_ids, filter_mode="essential")
+                else:
+                    st.info("No essential capabilities identified in this assessment.")
+                    render_cpt_table(highlight_ids=set(), filter_mode="essential")
+
+            with tab_advanced:
+                if advanced_ids:
+                    st.caption(f"Highlighting {len(advanced_ids)} advanced (should-have) capabilities. Other capabilities are grayed out.")
+                    render_cpt_table(highlight_ids=advanced_ids, filter_mode="advanced")
+                else:
+                    st.info("No advanced capabilities identified in this assessment.")
+                    render_cpt_table(highlight_ids=set(), filter_mode="advanced")
+
+            with tab_optional:
+                if optional_ids:
+                    st.caption(f"Highlighting {len(optional_ids)} optional (nice-to-have) capabilities. Other capabilities are grayed out.")
+                    render_cpt_table(highlight_ids=optional_ids, filter_mode="optional")
+                else:
+                    st.info("No optional capabilities identified in this assessment.")
+                    render_cpt_table(highlight_ids=set(), filter_mode="optional")
+
+            st.divider()
+
+            # Full document and HTML preview in expanders
             with st.expander("View Full Mapping Document", expanded=False):
                 st.markdown(st.session_state.capability_mapping.get('full_document', ''))
 
             # HTML Preview
             if st.session_state.capability_mapping.get('html_visualization'):
-                with st.expander("Preview HTML Visualization", expanded=False):
+                with st.expander("Preview Interactive HTML Visualization", expanded=False):
                     st.components.v1.html(
                         st.session_state.capability_mapping['html_visualization'],
                         height=600,
