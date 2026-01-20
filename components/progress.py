@@ -104,19 +104,10 @@ def render_step_navigation(
     """
     st.divider()
 
-    # Confirmation checkbox if required
-    confirmed = True
-    if show_confirmation and can_proceed:
-        confirmed = st.checkbox(
-            "I have reviewed the results and want to proceed",
-            key=f"confirm_step_{current_step}"
-        )
-
-    # Navigation buttons
-    col1, col2, col3 = st.columns([1, 2, 1])
-
-    with col1:
-        if current_step > 0:
+    # Back button (outside the highlighted section)
+    if current_step > 0:
+        col_back, _ = st.columns([1, 4])
+        with col_back:
             if st.button("Back", use_container_width=True):
                 if on_back:
                     on_back()
@@ -124,25 +115,59 @@ def render_step_navigation(
                     st.session_state['current_step'] = current_step - 1
                     st.rerun()
 
-    with col3:
-        if current_step < 3:
-            if st.button(
-                next_label,
-                use_container_width=True,
-                disabled=not (can_proceed and confirmed),
-                type="primary"
-            ):
-                if on_next:
-                    on_next()
-                else:
-                    st.session_state['current_step'] = current_step + 1
+    # Highlighted action section with checkbox and continue button
+    if can_proceed:
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, #EBF4FF 0%, #DBEAFE 100%);
+            border: 2px solid #3B82F6;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 16px 0;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        ">
+            <div style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 8px;
+            ">
+                <span style="font-size: 1.2rem;">&#8594;</span>
+                <span style="font-weight: 600; color: #1E40AF;">Ready to Continue?</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Use container to put checkbox and button inside the visual area
+        col1, col2 = st.columns([3, 1])
+
+        confirmed = True
+        with col1:
+            if show_confirmation:
+                confirmed = st.checkbox(
+                    "I have reviewed the results and want to proceed",
+                    key=f"confirm_step_{current_step}"
+                )
+
+        with col2:
+            if current_step < 3:
+                if st.button(
+                    next_label,
+                    use_container_width=True,
+                    disabled=not confirmed,
+                    type="primary"
+                ):
+                    if on_next:
+                        on_next()
+                    else:
+                        st.session_state['current_step'] = current_step + 1
+                        st.rerun()
+            else:
+                if st.button(
+                    "Complete Assessment",
+                    use_container_width=True,
+                    disabled=not confirmed,
+                    type="primary"
+                ):
+                    st.session_state['assessment_complete'] = True
                     st.rerun()
-        else:
-            if st.button(
-                "Complete Assessment",
-                use_container_width=True,
-                disabled=not can_proceed,
-                type="primary"
-            ):
-                st.session_state['assessment_complete'] = True
-                st.rerun()

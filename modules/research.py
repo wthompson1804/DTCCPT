@@ -323,34 +323,48 @@ def extract_section(content: str, section_name: str) -> str:
     # Allow for numbering, different header levels, and case variations
     section_words = section_name.split()
 
-    # Pattern variations to try
-    patterns = [
-        # Numbered markdown header: ## 1. Industry AI Adoption
-        rf"#{1,4}\s*\d+\.?\s*{re.escape(section_name)}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
-        # Plain markdown header: ## Industry AI Adoption
-        rf"#{1,4}\s*{re.escape(section_name)}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
-        # Bold header: **Industry AI Adoption**
-        rf"\*\*{re.escape(section_name)}\*\*[^\n]*\n(.*?)(?=\n\*\*|\n#{1,4}\s|\Z)",
-        # Numbered without hash: 1. Industry AI Adoption
-        rf"^\d+\.\s*{re.escape(section_name)}[^\n]*\n(.*?)(?=\n\d+\.|\n#{1,4}\s|\Z)",
-    ]
+    # Name variations mapping
+    name_variations = {
+        "Industry AI Adoption": ["Industry AI Adoption", "AI Adoption", "Industry Adoption", "Current State", "Market Analysis"],
+        "Regulatory Environment": ["Regulatory Environment", "Regulations", "Regulatory", "Compliance", "Legal Framework", "Standards"],
+        "Technical Integration": ["Technical Integration", "Technical", "Integration", "Technology Stack", "Architecture"],
+        "Risk & Failure Modes": ["Risk & Failure Modes", "Risk and Failure", "Risks", "Failure Modes", "Risk Analysis", "Risk Factors"],
+        "Economic Viability": ["Economic Viability", "Economic", "Financial", "ROI", "Cost Analysis", "Business Case"],
+    }
 
-    # Also try with partial matches for key words
-    if len(section_words) >= 2:
-        # Match on key distinctive words (e.g., "Industry" + "Adoption")
-        key_word1 = re.escape(section_words[0])
-        key_word2 = re.escape(section_words[-1])
-        patterns.extend([
-            rf"#{1,4}\s*\d*\.?\s*[^\n]*{key_word1}[^\n]*{key_word2}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
-        ])
+    variations = name_variations.get(section_name, [section_name])
 
-    for pattern in patterns:
-        match = re.search(pattern, content, re.DOTALL | re.IGNORECASE | re.MULTILINE)
-        if match:
-            result = match.group(1).strip()
-            # Ensure we got actual content, not just whitespace
-            if len(result) > 20:
-                return result
+    for variation in variations:
+        var_words = variation.split()
+
+        # Pattern variations to try
+        patterns = [
+            # Numbered markdown header: ## 1. Industry AI Adoption
+            rf"#{1,4}\s*\d+\.?\s*{re.escape(variation)}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+            # Plain markdown header: ## Industry AI Adoption
+            rf"#{1,4}\s*{re.escape(variation)}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+            # Bold header: **Industry AI Adoption**
+            rf"\*\*\d*\.?\s*{re.escape(variation)}[:\*]*\*\*[^\n]*\n(.*?)(?=\n\*\*\d*\.|\n#{1,4}\s|\Z)",
+            # Numbered without hash: 1. Industry AI Adoption
+            rf"^\d+\.\s*{re.escape(variation)}[^\n]*\n(.*?)(?=\n\d+\.|\n#{1,4}\s|\Z)",
+        ]
+
+        # Also try with partial matches for key words
+        if len(var_words) >= 2:
+            # Match on key distinctive words
+            key_word1 = re.escape(var_words[0])
+            key_word2 = re.escape(var_words[-1])
+            patterns.extend([
+                rf"#{1,4}\s*\d*\.?\s*[^\n]*{key_word1}[^\n]*{key_word2}[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+            ])
+
+        for pattern in patterns:
+            match = re.search(pattern, content, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+            if match:
+                result = match.group(1).strip()
+                # Ensure we got actual content, not just whitespace
+                if len(result) > 20:
+                    return result
 
     # Last resort: try to find any section that contains the key words
     for word in section_words:
@@ -359,6 +373,16 @@ def extract_section(content: str, section_name: str) -> str:
             match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
             if match and len(match.group(1).strip()) > 50:
                 return match.group(1).strip()
+
+    # Ultra fallback: Split content by major headers and find best match
+    header_splits = re.split(r'\n#{1,3}\s+\d*\.?\s*', content)
+    for section in header_splits:
+        section_lower = section.lower()
+        for word in section_words:
+            if len(word) > 3 and word.lower() in section_lower[:100]:
+                # Found a section that starts with content related to our search
+                if len(section) > 50:
+                    return section.strip()
 
     return ""
 
@@ -429,25 +453,61 @@ def extract_bullet_list(content: str, section_name: str) -> List[str]:
 
     items = []
 
-    # Try to find the section and extract bullets
-    patterns = [
-        rf"\*\*{re.escape(section_name)}[:\*]*\*\*[^\n]*\n((?:[-*•]\s*[^\n]+\n?)+)",
-        rf"{re.escape(section_name)}[:\s]*\n((?:[-*•]\s*[^\n]+\n?)+)",
-        rf"#{1,4}\s*{re.escape(section_name)}[^\n]*\n((?:[-*•]\s*[^\n]+\n?)+)",
-    ]
+    # Normalize variations of the section name
+    name_variations = [section_name]
+    if "Risk" in section_name:
+        name_variations.extend(["Key Risks", "Risk Factors", "Primary Risks", "Main Risks", "Risks"])
+    if "Success" in section_name:
+        name_variations.extend(["Success Factors", "Critical Factors", "Key Success Factors", "CSF"])
 
-    for pattern in patterns:
-        match = re.search(pattern, content, re.IGNORECASE | re.MULTILINE)
-        if match:
-            bullet_text = match.group(1)
-            # Extract individual bullet items
-            bullet_matches = re.findall(r'[-*•]\s*(.+?)(?=\n[-*•]|\n\n|\Z)', bullet_text, re.DOTALL)
-            for item in bullet_matches:
-                clean_item = item.strip()
-                if clean_item and len(clean_item) > 3:
-                    items.append(clean_item)
-            if items:
-                break
+    # Try to find the section and extract bullets with multiple pattern variations
+    for name in name_variations:
+        patterns = [
+            # **Key Risk Factors:** followed by bullet list
+            rf"\*\*{re.escape(name)}[:\*]*\*\*[^\n]*\n((?:\s*[-*•]\s*[^\n]+\n?)+)",
+            # **Key Risk Factors:** with inline bullets on same line and below
+            rf"\*\*{re.escape(name)}[:\*]*\*\*\s*\n?((?:[-*•]\s*[^\n]+\n?)+)",
+            # Key Risk Factors: (no bold)
+            rf"{re.escape(name)}[:\s]*\n((?:\s*[-*•]\s*[^\n]+\n?)+)",
+            # ### Key Risk Factors (markdown header)
+            rf"#{1,4}\s*{re.escape(name)}[^\n]*\n((?:\s*[-*•]\s*[^\n]+\n?)+)",
+            # Numbered list: 1. First risk
+            rf"\*\*{re.escape(name)}[:\*]*\*\*[^\n]*\n((?:\s*\d+\.\s*[^\n]+\n?)+)",
+            rf"{re.escape(name)}[:\s]*\n((?:\s*\d+\.\s*[^\n]+\n?)+)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, content, re.IGNORECASE | re.MULTILINE)
+            if match:
+                bullet_text = match.group(1)
+                # Extract bullet items (dash, asterisk, bullet, or number)
+                bullet_matches = re.findall(r'(?:[-*•]|\d+\.)\s*(.+?)(?=\n\s*(?:[-*•]|\d+\.)|\n\n|\n\*\*|\Z)', bullet_text, re.DOTALL)
+                for item in bullet_matches:
+                    clean_item = item.strip().rstrip('\n').strip()
+                    # Remove any trailing markdown like ** that might be captured
+                    clean_item = re.sub(r'\*\*$', '', clean_item).strip()
+                    if clean_item and len(clean_item) > 3 and clean_item not in items:
+                        items.append(clean_item)
+                if items:
+                    return items[:5]
+
+    # Fallback: Look for any bullet list near keywords
+    if not items:
+        keywords = section_name.lower().split()
+        for keyword in keywords:
+            if len(keyword) > 3:
+                # Find where this keyword appears and look for bullets nearby
+                pattern = rf"{re.escape(keyword)}[^\n]*\n((?:\s*[-*•]\s*[^\n]+\n?)+)"
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    bullet_text = match.group(1)
+                    bullet_matches = re.findall(r'[-*•]\s*(.+?)(?=\n[-*•]|\n\n|\Z)', bullet_text, re.DOTALL)
+                    for item in bullet_matches:
+                        clean_item = item.strip()
+                        if clean_item and len(clean_item) > 3 and clean_item not in items:
+                            items.append(clean_item)
+                    if items:
+                        return items[:5]
 
     return items[:5]  # Return max 5 items
 
@@ -515,12 +575,19 @@ def extract_rationale(content: str) -> str:
     """
     import re
 
-    # Look for explicit rationale section
+    # Look for explicit rationale section with various patterns
     patterns = [
-        r"\*\*Recommendation Rationale[:\*]*\*\*\s*(.+?)(?=\n\n\*\*|\n#{1,4}\s|\Z)",
+        r"\*\*Recommendation Rationale[:\*]*\*\*\s*\n?(.+?)(?=\n\n\*\*|\n#{1,4}\s|\Z)",
         r"Recommendation Rationale[:\s]+(.+?)(?=\n\n\*\*|\n#{1,4}\s|\Z)",
-        r"\*\*Rationale[:\*]*\*\*\s*(.+?)(?=\n\n\*\*|\n#{1,4}\s|\Z)",
+        r"\*\*Rationale[:\*]*\*\*\s*\n?(.+?)(?=\n\n\*\*|\n#{1,4}\s|\Z)",
         r"#{1,4}\s*Rationale[^\n]*\n(.+?)(?=\n#{1,4}\s|\Z)",
+        r"#{1,4}\s*Recommendation Rationale[^\n]*\n(.+?)(?=\n#{1,4}\s|\Z)",
+        # Also look for "Why" sections
+        r"\*\*Why[:\*]*\*\*\s*\n?(.+?)(?=\n\n\*\*|\n#{1,4}\s|\Z)",
+        r"#{1,4}\s*Why[^\n]*\n(.+?)(?=\n#{1,4}\s|\Z)",
+        # Analysis or reasoning section
+        r"\*\*Analysis[:\*]*\*\*\s*\n?(.+?)(?=\n\n\*\*|\n#{1,4}\s|\Z)",
+        r"#{1,4}\s*Analysis[^\n]*\n(.+?)(?=\n#{1,4}\s|\Z)",
     ]
 
     for pattern in patterns:
@@ -528,20 +595,44 @@ def extract_rationale(content: str) -> str:
         if match:
             rationale = match.group(1).strip()
             if len(rationale) > 50:
+                # Clean up any leading/trailing asterisks
+                rationale = re.sub(r'^\*+|\*+$', '', rationale).strip()
                 return rationale
 
     # Fallback: look for reasoning in preliminary assessment section
-    prelim_pattern = r"#{1,4}\s*Preliminary Assessment[^\n]*\n(.*?)(?=\n#{1,4}\s[^#]|\Z)"
-    match = re.search(prelim_pattern, content, re.IGNORECASE | re.DOTALL)
-    if match:
-        prelim_section = match.group(1)
-        # Look for explanatory text (not just bullet points)
-        paragraphs = prelim_section.split('\n\n')
-        for para in paragraphs:
-            para = para.strip()
-            # Find paragraphs that look like explanatory text
-            if para and len(para) > 100 and not para.startswith('-') and not para.startswith('*') and not para.startswith('**'):
-                return para
+    prelim_patterns = [
+        r"#{1,4}\s*Preliminary Assessment[^\n]*\n(.*?)(?=\n#{1,4}\s[^#]|\Z)",
+        r"\*\*Preliminary Assessment[:\*]*\*\*[^\n]*\n(.*?)(?=\n\*\*\d+\.|\n#{1,4}\s|\Z)",
+        r"#{1,4}\s*Executive Summary[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+    ]
+
+    for prelim_pattern in prelim_patterns:
+        match = re.search(prelim_pattern, content, re.IGNORECASE | re.DOTALL)
+        if match:
+            prelim_section = match.group(1)
+            # Look for explanatory text (not just bullet points)
+            paragraphs = prelim_section.split('\n\n')
+            for para in paragraphs:
+                para = para.strip()
+                # Find paragraphs that look like explanatory text
+                if para and len(para) > 100:
+                    # Skip bullet lists and short metadata lines
+                    if not para.startswith('-') and not para.startswith('*') and not para.startswith('**Go') and not para.startswith('**Recommended') and not para.startswith('**Confidence'):
+                        return para
+
+    # Last resort: Look for any substantial explanatory paragraph after the assessment headers
+    assessment_keywords = ["go/no-go", "recommended", "confidence", "assessment"]
+    lines = content.split('\n')
+    capture_next = False
+    for i, line in enumerate(lines):
+        line_lower = line.lower()
+        if any(kw in line_lower for kw in assessment_keywords):
+            capture_next = True
+            continue
+        if capture_next and len(line.strip()) > 100:
+            # Found substantial text after assessment metadata
+            if not line.strip().startswith('-') and not line.strip().startswith('*'):
+                return line.strip()
 
     return ""
 

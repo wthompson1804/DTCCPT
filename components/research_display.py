@@ -403,6 +403,45 @@ def render_preliminary_assessment(assessment: Dict[str, Any]) -> None:
         </div>
         """, unsafe_allow_html=True)
 
+    # Confidence improvement guidance (show when not high confidence)
+    if confidence in ["low", "medium"]:
+        with st.expander(f"How to improve confidence from {confidence.upper()} to HIGH", expanded=(confidence == "low")):
+            st.markdown("""
+            <div style="background-color: #FEF3C7; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+                <strong style="color: #92400E;">To increase assessment confidence, provide:</strong>
+            </div>
+            """, unsafe_allow_html=True)
+
+            improvement_items = [
+                ("Specific use case details", "Describe the exact processes, decisions, or tasks the AI agent will handle"),
+                ("Existing system inventory", "List current software, data sources, and integration points"),
+                ("Quantified business metrics", "Include current performance baselines and target improvements (e.g., processing time, error rates)"),
+                ("Regulatory requirements", "Specify any compliance frameworks, certifications, or audit requirements"),
+                ("Risk tolerance statement", "Define acceptable levels of autonomy and failure modes"),
+            ]
+
+            for title, desc in improvement_items:
+                st.markdown(f"""
+                <div style="
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 10px;
+                    margin-bottom: 10px;
+                    padding: 10px;
+                    background-color: #F9FAFB;
+                    border-radius: 6px;
+                    border-left: 3px solid #3B82F6;
+                ">
+                    <span style="color: #3B82F6; font-weight: bold;">*</span>
+                    <div>
+                        <div style="font-weight: 600; color: #1F2937;">{title}</div>
+                        <div style="font-size: 0.85rem; color: #6B7280;">{desc}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.caption("Providing this information in the input form will enable more accurate research and higher confidence recommendations.")
+
     # Agent type explanation (expandable)
     if agent_type in AGENT_TYPE_INFO:
         with st.expander(f"ℹ️ What is a {agent_type} ({AGENT_TYPE_INFO[agent_type]['name']})?", expanded=False):
