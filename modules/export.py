@@ -10,8 +10,18 @@ This module provides export capabilities for:
 """
 
 import io
+import re
 from typing import Dict, Any, Optional
 from datetime import datetime
+
+try:
+    from docx import Document
+    from docx.shared import Inches, Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.style import WD_STYLE_TYPE
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
 
 
 def generate_markdown_report(
@@ -341,3 +351,284 @@ def export_to_html_package(
 </html>"""
 
     return html
+
+
+def generate_docx_report(
+    form_data: Dict[str, Any],
+    research_results: Dict[str, Any],
+    requirements_output: Dict[str, Any],
+    agent_design_output: Dict[str, Any],
+    capability_mapping: Dict[str, Any]
+) -> Optional[bytes]:
+    """Generate a DOCX report from the assessment data.
+
+    Args:
+        form_data: User input form data
+        research_results: Research findings
+        requirements_output: Generated requirements
+        agent_design_output: Agent design assessment
+        capability_mapping: Capability mappings
+
+    Returns:
+        DOCX file as bytes, or None if docx is not available
+    """
+    if not DOCX_AVAILABLE:
+        return None
+
+    doc = Document()
+
+    # Title
+    title = doc.add_heading('DTC AI Agent Capability Assessment Report', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Metadata
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    meta = doc.add_paragraph()
+    meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    meta.add_run(f"Generated: {timestamp}\n").italic = True
+    meta.add_run("Methodology: Digital Twin Consortium AI Agent CPT Framework").italic = True
+
+    doc.add_paragraph()
+
+    # Executive Summary
+    doc.add_heading('Executive Summary', level=1)
+
+    agent_type = "N/A"
+    if agent_design_output:
+        agent_type = agent_design_output.get(
+            'confirmed_type',
+            agent_design_output.get('recommended_type', 'N/A')
+        )
+
+    # Summary table
+    table = doc.add_table(rows=5, cols=2)
+    table.style = 'Table Grid'
+
+    rows_data = [
+        ('Industry', form_data.get('industry', 'N/A')),
+        ('Jurisdiction', form_data.get('jurisdiction', 'N/A')),
+        ('Agent Type', agent_type),
+        ('Capabilities Mapped', str(capability_mapping.get('total_mapped', 0) if capability_mapping else 0)),
+        ('Essential Capabilities', str(capability_mapping.get('essential_count', 0) if capability_mapping else 0)),
+    ]
+
+    for i, (label, value) in enumerate(rows_data):
+        table.rows[i].cells[0].text = label
+        table.rows[i].cells[1].text = value
+
+    doc.add_paragraph()
+
+    # Use Case Definition
+    doc.add_heading('1. Use Case Definition', level=1)
+
+    doc.add_heading('Industry Context', level=2)
+    p = doc.add_paragraph()
+    p.add_run('Industry: ').bold = True
+    p.add_run(f"{form_data.get('industry', 'N/A')}\n")
+    p.add_run('Jurisdiction: ').bold = True
+    p.add_run(f"{form_data.get('jurisdiction', 'N/A')}\n")
+    p.add_run('Organization Size: ').bold = True
+    p.add_run(f"{form_data.get('organization_size', 'N/A')}\n")
+    p.add_run('Timeline: ').bold = True
+    p.add_run(f"{form_data.get('timeline', 'N/A')}")
+
+    doc.add_heading('Use Case Description', level=2)
+    doc.add_paragraph(form_data.get('use_case', 'No use case provided'))
+
+    if form_data.get('existing_systems'):
+        doc.add_heading('Existing Systems', level=2)
+        doc.add_paragraph(form_data.get('existing_systems', 'None specified'))
+
+    if form_data.get('safety_requirements'):
+        doc.add_heading('Safety Requirements', level=2)
+        doc.add_paragraph(form_data.get('safety_requirements', 'None specified'))
+
+    # Research Findings
+    doc.add_heading('2. Research Findings', level=1)
+
+    if research_results:
+        preliminary = research_results.get('preliminary_assessment', {})
+
+        doc.add_heading('Preliminary Assessment', level=2)
+        p = doc.add_paragraph()
+        p.add_run('Go/No-Go Recommendation: ').bold = True
+        go_no_go = preliminary.get('go_no_go', 'N/A').upper()
+        run = p.add_run(f"{go_no_go}\n")
+        if go_no_go == 'GO':
+            run.font.color.rgb = RGBColor(16, 185, 129)
+        elif go_no_go == 'NO-GO':
+            run.font.color.rgb = RGBColor(239, 68, 68)
+        else:
+            run.font.color.rgb = RGBColor(245, 158, 11)
+
+        p.add_run('Recommended Agent Type: ').bold = True
+        p.add_run(f"{preliminary.get('recommended_type', 'N/A')}\n")
+        p.add_run('Confidence Level: ').bold = True
+        p.add_run(f"{preliminary.get('confidence_level', 'N/A').upper()}")
+
+        # Key Risks
+        key_risks = preliminary.get('key_risks', [])
+        if key_risks:
+            doc.add_heading('Key Risk Factors', level=2)
+            for risk in key_risks:
+                doc.add_paragraph(risk, style='List Bullet')
+
+        # Critical Success Factors
+        success_factors = preliminary.get('critical_success_factors', [])
+        if success_factors:
+            doc.add_heading('Critical Success Factors', level=2)
+            for factor in success_factors:
+                doc.add_paragraph(factor, style='List Bullet')
+
+        # Research Areas
+        doc.add_heading('Research Areas', level=2)
+        areas = research_results.get('research_areas', {})
+        for area_key, area_data in areas.items():
+            area_name = area_data.get('name', area_key)
+            doc.add_heading(area_name, level=3)
+            confidence = area_data.get('confidence', 'medium')
+            p = doc.add_paragraph()
+            p.add_run(f'Confidence: {confidence.upper()}').italic = True
+
+            findings = area_data.get('findings', 'No findings')
+            # Add findings, splitting into paragraphs
+            for para in findings.split('\n\n'):
+                if para.strip():
+                    doc.add_paragraph(para.strip())
+    else:
+        doc.add_paragraph('Research not conducted', style='Intense Quote')
+
+    # Business Requirements
+    doc.add_heading('3. Business Requirements', level=1)
+
+    if requirements_output and requirements_output.get('full_text'):
+        # Parse markdown to basic paragraphs
+        req_text = requirements_output.get('full_text', '')
+        for para in req_text.split('\n\n'):
+            if para.strip():
+                if para.startswith('#'):
+                    # Convert markdown headers
+                    header_level = len(para.split()[0])
+                    header_text = para.lstrip('#').strip()
+                    doc.add_heading(header_text, level=min(header_level + 1, 3))
+                elif para.startswith('-') or para.startswith('*'):
+                    # Convert bullet lists
+                    for line in para.split('\n'):
+                        if line.strip().startswith('-') or line.strip().startswith('*'):
+                            doc.add_paragraph(line.strip().lstrip('-*').strip(), style='List Bullet')
+                else:
+                    doc.add_paragraph(para.strip())
+    else:
+        doc.add_paragraph('Requirements not generated', style='Intense Quote')
+
+    # Agent Design
+    doc.add_heading('4. Agent Design', level=1)
+
+    doc.add_heading(f'Recommended Agent Type: {agent_type}', level=2)
+
+    if agent_design_output:
+        type_info = agent_design_output.get('type_info', {})
+        if type_info:
+            p = doc.add_paragraph()
+            p.add_run('Type Name: ').bold = True
+            p.add_run(f"{type_info.get('name', 'N/A')}\n")
+            p.add_run('Description: ').bold = True
+            p.add_run(f"{type_info.get('description', 'N/A')}")
+
+        if agent_design_output.get('justification'):
+            doc.add_heading('Justification', level=3)
+            doc.add_paragraph(agent_design_output['justification'])
+
+        if agent_design_output.get('architecture_summary'):
+            doc.add_heading('Architecture Summary', level=3)
+            doc.add_paragraph(agent_design_output['architecture_summary'])
+    else:
+        doc.add_paragraph('Agent design not generated', style='Intense Quote')
+
+    # Capability Mapping
+    doc.add_heading('5. Capability Mapping', level=1)
+
+    if capability_mapping:
+        doc.add_heading('Summary', level=2)
+
+        cap_table = doc.add_table(rows=4, cols=2)
+        cap_table.style = 'Table Grid'
+        cap_rows = [
+            ('Total Capabilities Mapped', str(capability_mapping.get('total_mapped', 0))),
+            ('Essential', str(capability_mapping.get('essential_count', 0))),
+            ('Advanced', str(capability_mapping.get('advanced_count', 0))),
+            ('Optional', str(capability_mapping.get('optional_count', 0))),
+        ]
+        for i, (label, value) in enumerate(cap_rows):
+            cap_table.rows[i].cells[0].text = label
+            cap_table.rows[i].cells[1].text = value
+
+        doc.add_paragraph()
+
+        # Essential Capabilities
+        essential = capability_mapping.get('essential_capabilities', [])
+        if essential:
+            doc.add_heading('Essential Capabilities', level=2)
+            for cap_id in essential:
+                doc.add_paragraph(cap_id, style='List Bullet')
+
+        # Advanced Capabilities
+        advanced = capability_mapping.get('advanced_capabilities', [])
+        if advanced:
+            doc.add_heading('Advanced Capabilities', level=2)
+            for cap_id in advanced:
+                doc.add_paragraph(cap_id, style='List Bullet')
+
+        # Optional Capabilities
+        optional = capability_mapping.get('optional_capabilities', [])
+        if optional:
+            doc.add_heading('Optional Capabilities', level=2)
+            for cap_id in optional:
+                doc.add_paragraph(cap_id, style='List Bullet')
+    else:
+        doc.add_paragraph('Capability mapping not generated', style='Intense Quote')
+
+    # Appendix
+    doc.add_heading('Appendix', level=1)
+
+    doc.add_heading('Methodology Reference', level=2)
+    doc.add_paragraph(
+        'This assessment follows the Digital Twin Consortium\'s AI Agent Capabilities '
+        'Periodic Table (CPT) framework, which organizes 45 capabilities across 6 categories:'
+    )
+
+    categories = [
+        'PK - Perception & Knowledge: Environmental awareness and knowledge access',
+        'CG - Cognition & Reasoning: Planning, reasoning, and decision-making',
+        'LA - Learning & Adaptation: Memory, learning, and self-optimization',
+        'AE - Action & Execution: Task execution and tool integration',
+        'IC - Interaction & Collaboration: Communication and coordination',
+        'GS - Governance & Safety: Deployment, monitoring, and compliance',
+    ]
+    for cat in categories:
+        doc.add_paragraph(cat, style='List Number')
+
+    doc.add_heading('Agent Types (T0-T4)', level=2)
+    agent_types = [
+        'T0: Static Automation - Rule-based, no learning',
+        'T1: Conversational Agents - NLP interaction, basic context',
+        'T2: Procedural Workflow Agents - Multi-step execution, tool integration',
+        'T3: Cognitive Autonomous Agents - Self-directed planning, learning',
+        'T4: Multi-Agent Generative Systems (MAGS) - Collaborative intelligence',
+    ]
+    for at in agent_types:
+        doc.add_paragraph(at, style='List Bullet')
+
+    # Footer
+    doc.add_paragraph()
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    footer.add_run('Report generated by DTC AI Agent Capability Assessment Tool\n').italic = True
+    footer.add_run('Powered by Digital Twin Consortium CPT Framework and Anthropic Claude').italic = True
+
+    # Save to bytes
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+
+    return file_stream.getvalue()

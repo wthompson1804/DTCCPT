@@ -15,6 +15,7 @@ pydantic>=2.0.0
 
 # Export capabilities
 markdown>=3.5.0
+python-docx>=1.1.0
 
 # Utilities
 python-dotenv>=1.0.0

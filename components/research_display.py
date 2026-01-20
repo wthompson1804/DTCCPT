@@ -2,8 +2,136 @@
 Research display component for showing research results with citations.
 """
 
+import io
 import streamlit as st
 from typing import Dict, Any, Optional
+from datetime import datetime
+
+try:
+    from docx import Document
+    from docx.shared import Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+
+def generate_research_docx(results: Dict[str, Any]) -> Optional[bytes]:
+    """Generate a DOCX file from research results.
+
+    Args:
+        results: Research results dictionary
+
+    Returns:
+        DOCX file as bytes, or None if docx not available
+    """
+    if not DOCX_AVAILABLE:
+        return None
+
+    doc = Document()
+
+    # Title
+    title = doc.add_heading('DTC AI Agent Research Report', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Metadata
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    meta = doc.add_paragraph()
+    meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    meta.add_run(f"Generated: {timestamp}").italic = True
+
+    doc.add_paragraph()
+
+    # Summary section
+    summary = results.get('summary', {})
+    doc.add_heading('Assessment Context', level=1)
+    p = doc.add_paragraph()
+    p.add_run('Industry: ').bold = True
+    p.add_run(f"{summary.get('industry', 'N/A')}\n")
+    p.add_run('Use Case: ').bold = True
+    p.add_run(f"{summary.get('use_case', 'N/A')}\n")
+    p.add_run('Jurisdiction: ').bold = True
+    p.add_run(f"{summary.get('jurisdiction', 'N/A')}")
+
+    # Preliminary Assessment
+    assessment = results.get('preliminary_assessment', {})
+    doc.add_heading('Preliminary Assessment', level=1)
+
+    p = doc.add_paragraph()
+    p.add_run('Go/No-Go Recommendation: ').bold = True
+    p.add_run(f"{assessment.get('go_no_go', 'N/A').upper()}\n")
+    p.add_run('Recommended Agent Type: ').bold = True
+    p.add_run(f"{assessment.get('recommended_type', 'N/A')}\n")
+    p.add_run('Confidence Level: ').bold = True
+    p.add_run(f"{assessment.get('confidence_level', 'N/A').upper()}")
+
+    # Key Risks
+    key_risks = assessment.get('key_risks', [])
+    if key_risks:
+        doc.add_heading('Key Risk Factors', level=2)
+        for risk in key_risks:
+            doc.add_paragraph(risk, style='List Bullet')
+
+    # Success Factors
+    success_factors = assessment.get('critical_success_factors', [])
+    if success_factors:
+        doc.add_heading('Critical Success Factors', level=2)
+        for factor in success_factors:
+            doc.add_paragraph(factor, style='List Bullet')
+
+    # Rationale
+    rationale = assessment.get('recommendation_rationale', '')
+    if rationale:
+        doc.add_heading('Recommendation Rationale', level=2)
+        doc.add_paragraph(rationale)
+
+    # Research Areas
+    doc.add_heading('Research Findings', level=1)
+    areas = results.get('research_areas', {})
+    for area_key, area_data in areas.items():
+        area_name = area_data.get('name', area_key)
+        doc.add_heading(area_name, level=2)
+
+        confidence = area_data.get('confidence', 'medium')
+        p = doc.add_paragraph()
+        p.add_run(f'Confidence: {confidence.upper()}').italic = True
+
+        # Add summary if available
+        summary_text = area_data.get('summary', '')
+        if summary_text:
+            doc.add_paragraph(summary_text)
+
+        # Add full findings
+        findings = area_data.get('findings', '')
+        if findings:
+            for para in findings.split('\n\n'):
+                if para.strip():
+                    doc.add_paragraph(para.strip())
+
+    # Full content at the end
+    if results.get('full_content'):
+        doc.add_heading('Complete Research Report', level=1)
+        for para in results['full_content'].split('\n\n'):
+            if para.strip():
+                if para.startswith('#'):
+                    header_text = para.lstrip('#').strip()
+                    level = min(len(para.split()[0]) if para.split() else 1, 3)
+                    doc.add_heading(header_text, level=level)
+                else:
+                    doc.add_paragraph(para.strip())
+
+    # Footer
+    doc.add_paragraph()
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    footer.add_run('Powered by Digital Twin Consortium CPT Framework').italic = True
+
+    # Save to bytes
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+
+    return file_stream.getvalue()
 
 
 # Educational descriptions for agent types
@@ -156,18 +284,29 @@ def render_research_results(results: Dict[str, Any]) -> None:
         st.divider()
         st.markdown("### 📄 Full Research Report")
 
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.caption("Download the complete research report for offline review or sharing.")
+        st.caption("Download the complete research report for offline review or sharing.")
+
+        col1, col2, col3 = st.columns([2, 1, 1])
         with col2:
-            # Download button
+            # Markdown download
             st.download_button(
-                label="⬇️ Download Report",
+                label="⬇️ Download .md",
                 data=results["full_content"],
                 file_name="dtc_research_report.md",
                 mime="text/markdown",
                 use_container_width=True
             )
+        with col3:
+            # DOCX download
+            docx_bytes = generate_research_docx(results)
+            if docx_bytes:
+                st.download_button(
+                    label="⬇️ Download .docx",
+                    data=docx_bytes,
+                    file_name="dtc_research_report.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
 
         with st.expander("📋 Preview Full Report", expanded=False):
             st.markdown(results["full_content"])

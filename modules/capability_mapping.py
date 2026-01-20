@@ -251,6 +251,11 @@ def parse_capability_mappings(
     mappings = []
     seen_caps = set()
 
+    # First, identify sections for priority classification
+    essential_section = extract_priority_section(content, "essential")
+    advanced_section = extract_priority_section(content, "advanced")
+    optional_section = extract_priority_section(content, "optional")
+
     # Find all capability IDs mentioned
     cap_pattern = r'\b([A-Z]{2}\.[A-Z]{2})\b'
     matches = re.findall(cap_pattern, content)
@@ -264,8 +269,8 @@ def parse_capability_mappings(
         if not cap_data:
             continue
 
-        # Determine priority based on context
-        priority = determine_priority(content, cap_id)
+        # Determine priority based on which section the capability appears in
+        priority = determine_priority(content, cap_id, essential_section, advanced_section, optional_section)
 
         # Extract justification if available
         justification = extract_capability_justification(content, cap_id)
@@ -283,23 +288,87 @@ def parse_capability_mappings(
     return mappings
 
 
-def determine_priority(content: str, cap_id: str) -> str:
-    """Determine the priority of a capability based on context."""
-    content_lower = content.lower()
+def extract_priority_section(content: str, priority_type: str) -> str:
+    """Extract the section content for a given priority level.
 
-    # Find the context around the capability mention
+    Args:
+        content: Full LLM response
+        priority_type: "essential", "advanced", or "optional"
+
+    Returns:
+        Section content or empty string
+    """
     import re
-    pattern = rf'.{{0,200}}{re.escape(cap_id)}.{{0,200}}'
-    match = re.search(pattern, content, re.IGNORECASE)
+
+    # Define patterns for each priority type
+    patterns = {
+        "essential": [
+            r"#{1,4}\s*(?:\d+\.?\s*)?Essential\s+Capabilities[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+            r"\*\*Essential\s+Capabilities[:\*]*\*\*[^\n]*\n(.*?)(?=\n\*\*|\n#{1,4}\s|\Z)",
+            r"#{1,4}\s*Must[- ]Have[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+            r"#{1,4}\s*Critical\s+Capabilities[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+        ],
+        "advanced": [
+            r"#{1,4}\s*(?:\d+\.?\s*)?Advanced\s+Capabilities[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+            r"\*\*Advanced\s+Capabilities[:\*]*\*\*[^\n]*\n(.*?)(?=\n\*\*|\n#{1,4}\s|\Z)",
+            r"#{1,4}\s*Should[- ]Have[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+            r"#{1,4}\s*High\s+Priority[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+        ],
+        "optional": [
+            r"#{1,4}\s*(?:\d+\.?\s*)?Optional\s+Capabilities[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+            r"\*\*Optional\s+Capabilities[:\*]*\*\*[^\n]*\n(.*?)(?=\n\*\*|\n#{1,4}\s|\Z)",
+            r"#{1,4}\s*Nice[- ]to[- ]Have[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+            r"#{1,4}\s*Future\s+Capabilities[^\n]*\n(.*?)(?=\n#{1,4}\s|\Z)",
+        ],
+    }
+
+    for pattern in patterns.get(priority_type, []):
+        match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+        if match:
+            return match.group(1)
+
+    return ""
+
+
+def determine_priority(content: str, cap_id: str,
+                      essential_section: str = "",
+                      advanced_section: str = "",
+                      optional_section: str = "") -> str:
+    """Determine the priority of a capability based on context.
+
+    Args:
+        content: Full LLM response
+        cap_id: Capability ID (e.g., "PK.OB")
+        essential_section: Pre-extracted essential section
+        advanced_section: Pre-extracted advanced section
+        optional_section: Pre-extracted optional section
+
+    Returns:
+        Priority level: "essential", "high", "medium", or "optional"
+    """
+    import re
+
+    # Check if capability appears in a specific priority section
+    if essential_section and re.search(rf'\b{re.escape(cap_id)}\b', essential_section):
+        return "essential"
+    if advanced_section and re.search(rf'\b{re.escape(cap_id)}\b', advanced_section):
+        return "high"
+    if optional_section and re.search(rf'\b{re.escape(cap_id)}\b', optional_section):
+        return "optional"
+
+    # Fallback: check context around the capability mention
+    pattern = rf'.{{0,300}}{re.escape(cap_id)}.{{0,300}}'
+    match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
 
     if match:
         context = match.group(0).lower()
 
-        if any(word in context for word in ['essential', 'critical', 'must have', 'required']):
+        # Check for priority indicators in context
+        if any(word in context for word in ['essential', 'critical', 'must have', 'must-have', 'required', 'mandatory']):
             return "essential"
-        elif any(word in context for word in ['advanced', 'should have', 'important', 'high']):
+        elif any(word in context for word in ['advanced', 'should have', 'should-have', 'important', 'high priority', 'recommended']):
             return "high"
-        elif any(word in context for word in ['optional', 'nice to have', 'low', 'future']):
+        elif any(word in context for word in ['optional', 'nice to have', 'nice-to-have', 'low priority', 'future', 'could have']):
             return "optional"
 
     return "medium"
@@ -372,6 +441,10 @@ def generate_html_visualization(
 
             opacity = "1" if is_mapped else "0.4"
 
+            # Get full description for hover
+            full_desc = cap_data.get('description', '')
+            justification = mapping.justification if mapping and mapping.justification else ''
+
             card = f'''
             <div class="capability-card" style="border-color: {color}; opacity: {opacity};" data-category="{cat_id}" data-priority="{priority}">
                 <div class="cap-header" style="background: {color}20; border-bottom: 2px solid {color};">
@@ -379,7 +452,8 @@ def generate_html_visualization(
                     {priority_badge}
                 </div>
                 <div class="cap-name">{cap_data.get('name', '')}</div>
-                {f'<div class="cap-justification">{mapping.justification[:100]}...</div>' if mapping and mapping.justification else ''}
+                <div class="cap-description">{full_desc}</div>
+                {f'<div class="cap-justification"><strong>Why needed:</strong> {justification}</div>' if justification else ''}
             </div>
             '''
             capability_cards.append(card)
@@ -402,13 +476,67 @@ def generate_html_visualization(
         .filter-btn:hover {{ background: #F3F4F6; }}
         .filter-btn.active {{ background: #3B82F6; color: white; border-color: #3B82F6; }}
         .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }}
-        .capability-card {{ background: white; border-radius: 8px; border: 2px solid #E5E7EB; overflow: hidden; transition: all 0.2s; }}
-        .capability-card:hover {{ transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }}
+        .capability-card {{
+            background: white;
+            border-radius: 8px;
+            border: 2px solid #E5E7EB;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            position: relative;
+            min-height: 100px;
+        }}
+        .capability-card:hover {{
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            z-index: 100;
+        }}
         .cap-header {{ padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; }}
         .cap-id {{ font-weight: bold; font-size: 0.9rem; }}
         .priority-badge {{ font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; color: white; }}
-        .cap-name {{ padding: 12px; font-size: 0.85rem; font-weight: 500; }}
-        .cap-justification {{ padding: 0 12px 12px; font-size: 0.75rem; color: #6B7280; }}
+        .cap-name {{
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            line-height: 1.3;
+            /* Truncate by default */
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }}
+        .capability-card:hover .cap-name {{
+            /* Show full text on hover */
+            -webkit-line-clamp: unset;
+            overflow: visible;
+        }}
+        .cap-description {{
+            padding: 0 12px;
+            font-size: 0.75rem;
+            color: #6B7280;
+            line-height: 1.4;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }}
+        .capability-card:hover .cap-description {{
+            max-height: 200px;
+            padding: 8px 12px;
+        }}
+        .cap-justification {{
+            padding: 0 12px;
+            font-size: 0.75rem;
+            color: #4B5563;
+            line-height: 1.4;
+            background: #F9FAFB;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }}
+        .capability-card:hover .cap-justification {{
+            max-height: 150px;
+            padding: 8px 12px;
+            margin-top: 4px;
+        }}
         .legend {{ display: flex; gap: 20px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }}
         .legend-item {{ display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }}
         .legend-color {{ width: 16px; height: 16px; border-radius: 4px; }}
